@@ -20,11 +20,11 @@ int main(int argc, char** argv) {
 	int current_arg = 0;
 	const char* working_dir = READ_ARG;
 
-	puts("SuperForth GCC Compiler/Transpiler\n" 
+	puts("Capote SuperForth Compiler\n" 
 			"Written by Michael Wang 2022\n\n"
 			
 			"This is an experimental program, and may not support the latest SuperForth features. Expect any version signifigantly above or below SuperForth v1.0 programs to not compile.\n"
-			"Foreign functions work differently for this edition of SuperForth. Dynamic linking is not supported, please consult relevant documentation first.");
+			"This program was created for the HighTechHacks Hack-a-thon\n");
 
 	EXPECT_FLAG("-s");
 	const char* source = READ_ARG;
