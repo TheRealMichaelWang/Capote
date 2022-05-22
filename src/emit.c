@@ -294,7 +294,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_DYNAMIC_TRACE:
 			fputs("TRACE_COUNT_CHECK; (heap_traces[trace_count++] = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
-			fputs(".heap_alloc)->gc_flag)->gc_flag = (defined_signatures[", file_out);
+			fputs(".heap_alloc)->gc_flag = (defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
 			fputs(".long_int].super_signature >= 9);", file_out);
 			break;
