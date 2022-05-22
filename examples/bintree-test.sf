@@ -1,0 +1,47 @@
+include "std.sf";
+include "binary_tree.sf";
+
+include "random.txt";
+include "io.txt";
+include "string.txt";
+
+global readonly auto print_tree = proc<elemType>(tree<elemType> e, proc<nothing, elemType> printElem) return nothing {
+	readonly auto print_leaf = proc<elemType>(leaf<elemType> l, proc<nothing, elemType> printElem, int depth) return nothing {
+		int i = 0;
+		while(i < depth) {
+			put_char('\t');
+			i = i + 1;
+		}
+
+		if(l is empty_leaf<any>) {
+			println("empty");
+		}
+		else {
+			node<elemType> node = dynamic_cast<node<elemType>>(l);
+			printElem(node.elem);
+			put_char('\n');
+			thisproc<elemType>(node.left, printElem, depth + 1);
+			thisproc<elemType>(node.right, printElem, depth + 1);
+		}
+		return;
+	};
+	print_leaf<elemType>(e.head, printElem, 0);
+	return;
+};
+
+auto tree = new tree<int> {
+	compare = proc(int a, int b) return int {
+		return a - b;
+	};
+};
+
+int i = 0;
+while(i < 10) {
+	insert<int>(tree, randirange(0, 100));
+	i = i + 1;
+}
+
+print_tree<int>(tree, proc(int i) return nothing {
+	print(itos(i));
+	return;
+});

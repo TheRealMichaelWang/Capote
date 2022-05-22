@@ -1,0 +1,11 @@
+abstract record failible<returnType>;
+
+final record success<returnType> extends failible<returnType> {
+  readonly returnType result;
+}
+
+record error<returnType> extends failible<returnType> {
+  readonly array<char> msg;
+}
+
+global readonly float nan = 0f/0f;
