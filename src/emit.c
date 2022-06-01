@@ -3,9 +3,13 @@
 #include <string.h>
 #include "type.h"
 #include "file.h"
+#include "pros.h"
 #include "emit.h"
 
-int emit_c_header(FILE* fileout) {
+int emit_c_header(FILE* fileout, int robo_mode) {
+	if (robo_mode)
+		fputs("#define ROBOMODE\n\n", fileout);
+
 	char* header_data = file_read_source("stdheader.c");
 	ESCAPE_ON_FAIL(header_data);
 	fwrite(header_data, sizeof(char), strlen(header_data), fileout);
@@ -25,13 +29,14 @@ static int emit_type_sig(FILE* file_out, const char* parent_sig, machine_type_si
 
 	if (type_sig.super_signature != TYPE_TYPEARG && type_sig.sub_type_count) {
 		fprintf(file_out, "ESCAPE_ON_FAIL(%ssub_types = malloc(%"PRIu8" * sizeof(machine_type_sig_t)));", parent_sig, type_sig.sub_type_count);
-		char* new_type_sig = malloc(strlen(parent_sig) + 15);
+		char* new_type_sig = malloc(strlen(parent_sig) + 20);
 		ESCAPE_ON_FAIL(new_type_sig);
 
 		for (uint8_t i = 0; i < type_sig.sub_type_count; i++) {
 			sprintf(new_type_sig, "%ssub_types[%"PRIu8"].", parent_sig, i);
 			ESCAPE_ON_FAIL(emit_type_sig(file_out, new_type_sig, type_sig.sub_types[i]));
 		}
+		free(new_type_sig);
 	}
 	return 1;
 }
@@ -64,20 +69,27 @@ static void emit_reg(FILE* file_out, compiler_reg_t reg, int get_ptr) {
 	fputc(']', file_out);
 }
 
-int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* instructions, uint64_t count) {
+int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* instructions, uint64_t count, int dbg) {
 	static const char* num_types[] = {
 		"long_int",
 		"float_int"
 	};
 	fputs("\n//runs the instructions\nstatic int run() {\n\tmachine_type_sig_t* sig; void* scratch_ip; heap_alloc_t* scratch_heap; int64_t scratch_i;\n", file_out);
 	for (uint_fast64_t i = 0; i < count; i++) {
-		if (label_buf->ins_label[i])
-			fprintf(file_out, "label%"PRIu16":\n", label_buf->ins_label[i]);
+		if (label_buf->ins_label[i]) {
+			fprintf(file_out, "label%"PRIu16":", label_buf->ins_label[i]);
+			if (dbg)
+				fprintf(file_out, " puts(\"label:%"PRIu16"\");", label_buf->ins_label[i]);
+			fputc('\n', file_out);
+		}
 		fputc('\t', file_out);
 
 		switch (instructions[i].op_code) {
 		case COMPILER_OP_CODE_ABORT:
-			fprintf(file_out, "PANIC(%"PRIu16");", instructions[i].regs[0].reg);
+			if (instructions[i].regs[0].reg == ERROR_NONE)
+				fputs("return 1;", file_out);
+			else
+				fprintf(file_out, "PANIC(%"PRIu16");", instructions[i].regs[0].reg);
 			break;
 		case COMPILER_OP_CODE_FOREIGN:
 			fputs("if(!ffi_invoke(&ffi_table, ", file_out);
@@ -276,7 +288,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_FREE:
 			fputs("PANIC_ON_FAIL(free_alloc(", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
-			fputs(".heap_alloc));", file_out);
+			fputs(".heap_alloc), ERROR_MEMORY);", file_out);
 			if (instructions[i].op_code == COMPILER_OP_CODE_DYNAMIC_FREE)
 				fputc('}', file_out);
 			break;
@@ -382,7 +394,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 				if (instructions[i].op_code == COMPILER_OP_CODE_LONG_DIVIDE) {
 					fputs("PANIC_ON_FAIL(", file_out);
 					emit_reg(file_out, instructions[i].regs[1], 0);
-					fputs(".long_int);", file_out);
+					fputs(".long_int, ERROR_DIVIDE_BY_ZERO);", file_out);
 				}
 				emit_reg(file_out, instructions[i].regs[2], 0);
 				fprintf(file_out, ".%s = ", set_vals[op_id] ? type : "bool_flag");
@@ -528,15 +540,25 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		
 		fputc('\n', file_out);
 	}
-	fputs("\treturn 1;\n}\n", file_out);
+	fputs("}\n", file_out);
 	return 1;
 }
 
-void emit_main(FILE* file_out) {
-	fputs("\nint main() {\n"
-		  "\tinit_all();\n"
-		  "\tinstall_stdlib();\n"
-		  "\trun();\n"
-		  "\tfree_runtime();\n"
-		  "}", file_out);
+void emit_final(FILE* file_out, int robo_mode, const char* input_file) {
+	if (robo_mode) {
+		pros_emit_info(file_out, input_file);
+		pros_emit_events(file_out);
+	}
+	else {
+		fputs("\nint main() {\n"
+			"\tif(!init_all()) {\n\t\texit(ERROR_FAILIURE);\n\t}\n"
+			"\tif(!run()) {\n"
+			"\t\tprintf(\"Runtime Error: %s\", error_names[last_err]);\n"
+			"\t\tfree_runtime();\n"
+			"\t\texit(EXIT_FALIURE);\n"
+			"\t}\n"
+			"\tfree_runtime();\n"
+			"\texit(EXIT_SUCCESS);\n"
+			"}", file_out);
+	}
 }

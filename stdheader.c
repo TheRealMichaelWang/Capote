@@ -3,6 +3,12 @@
 
 //Emitted c standard header. This will generally have the properties of machine.h
 
+#ifdef ROBOMODE
+#ifndef ROBOSIM
+#include "main.h"
+#endif // ROBOSIM
+#endif
+
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -29,10 +35,6 @@ static int init_ffi(ffi_t* ffi_table) {
 	ESCAPE_ON_FAIL(ffi_table->func_table = malloc((ffi_table->func_alloc = 64) * sizeof(foreign_func)));
 	ffi_table->func_count = 0;
 	return 1;
-}
-
-static void free_ffi(ffi_t* ffi_table) {
-	free(ffi_table->func_table);
 }
 
 static int ffi_include_func(ffi_t* ffi_table, foreign_func func) {
@@ -85,8 +87,9 @@ typedef enum error {
 	ERROR_ABORT,
 	ERROR_FOREIGN,
 
-	ERROR_CANNOT_OPEN_FILE
-} error_t;
+	ERROR_CANNOT_OPEN_FILE,
+	ERROR_ROBOT
+} superforth_error_t;
 
 typedef struct machine_type_signature machine_type_sig_t;
 typedef struct machine_type_signature {
@@ -121,6 +124,42 @@ typedef union machine_register {
 	void* ip;
 } machine_reg_t;
 
+static const char* error_names[] = {
+	"none",
+	"memory",
+	"internal",
+
+	"unexpected token",
+
+	"cannot set readonly var",
+	"unallowed type",
+
+	"undeclared",
+	"redeclaration",
+
+	"unexpected type",
+	"unexpected argument length",
+
+	"cannot return",
+	"cannot break",
+	"cannot continue",
+	"cannot extend(is final)",
+	"cannot initialize(is abstract)",
+
+	"index out of range",
+	"divide by zero",
+	"stack overflow",
+	"read unitialized memory",
+
+	"function unable to return",
+
+	"program aborted",
+	"foreign error",
+	"cannot open file",
+
+	"robot error"
+};
+
 static machine_reg_t stack[UINT16_MAX / 8]; //stack memory
 static void* positions[FRAME_LIMIT]; //call stack
 
@@ -133,7 +172,7 @@ static uint16_t* trace_frame_bounds;
 static heap_alloc_t** freed_heap_allocs; //recycled heap allocations/objects
 
 //some debuging flags
-static error_t last_err;
+static superforth_error_t last_err;
 static uint64_t last_ip;
 #define PANIC_ON_FAIL(COND, ERR) {if(!(COND, ERR)) {last_err = ERR; return 0;}}
 #define PANIC(ERR) {last_err = ERR; return 0;}
@@ -195,6 +234,7 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 #undef CHECK_HEAP_COUNT
 }
 
+static int install_stdlib();
 static int init_runtime(int type_table_size) {
 	last_err = ERROR_NONE;
 	global_offset = 0;
@@ -210,9 +250,9 @@ static int init_runtime(int type_table_size) {
 	ESCAPE_ON_FAIL(heap_frame_bounds = malloc(FRAME_LIMIT * sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(trace_frame_bounds = malloc(FRAME_LIMIT * sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(freed_heap_allocs = malloc((alloc_freed_heaps = 128) * sizeof(heap_alloc_t*)));
-	ESCAPE_ON_FAIL(type_table = malloc(type_table_size * sizeof(uint16_t)));
+	ESCAPE_ON_FAIL(type_table = calloc(type_table_size, sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(defined_signatures = malloc((alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
-	ESCAPE_ON_FAIL(init_ffi(&ffi_table));
+	ESCAPE_ON_FAIL(install_stdlib());
 	return 1;
 }
 
@@ -281,7 +321,7 @@ static void free_runtime() {
 	free(freed_heap_allocs);
 	free(type_table);
 	free(defined_signatures);
-	free_ffi(&ffi_table);
+	free(ffi_table.func_table);
 }
 
 static machine_type_sig_t* new_type_sig() {
@@ -451,7 +491,7 @@ static int64_t longpow(int64_t base, int64_t exp) {
 
 //standard foreign functions go here
 
-static char* read_str_from_heap_alloc(heap_alloc_t* heap_alloc) {
+static char* heap_alloc_str(heap_alloc_t* heap_alloc) {
 	char* buffer = malloc(heap_alloc->limit + 1);
 	ESCAPE_ON_FAIL(buffer);
 	for (int i = 0; i < heap_alloc->limit; i++)
@@ -493,7 +533,7 @@ static int std_ftos(machine_reg_t* in, machine_reg_t* out) {
 }
 
 static int std_stof(machine_reg_t* in, machine_reg_t* out) {
-	char* buffer = read_str_from_heap_alloc(in->heap_alloc);
+	char* buffer = heap_alloc_str(in->heap_alloc);
 	PANIC_ON_FAIL(buffer, ERROR_MEMORY);
 	char* ferror;
 	out->float_int = strtod(buffer, &ferror);
@@ -514,7 +554,7 @@ static int std_itos(machine_reg_t* in, machine_reg_t* out) {
 }
 
 static int std_stoi(machine_reg_t* in, machine_reg_t* out) {
-	char* buffer = read_str_from_heap_alloc(in->heap_alloc);
+	char* buffer = heap_alloc_str(in->heap_alloc);
 	PANIC_ON_FAIL(buffer, ERROR_MEMORY);
 	out->long_int = strtol(buffer, NULL, 10);
 	free(buffer);
@@ -532,12 +572,21 @@ static int std_itoc(machine_reg_t* in, machine_reg_t* out) {
 }
 
 static int std_out(machine_reg_t* in, machine_reg_t* out) {
-	printf("%c", in->char_int);
+#ifdef ROBOMODE
+	PANIC(ERROR_FOREIGN); //input is not supported in robomode
+#else
+	putchar(in->char_int);
+#endif
 	return 1;
 }
 
 static int std_in(machine_reg_t* in, machine_reg_t* out) {
-	return scanf("%c", &out->char_int);
+#ifdef ROBOMODE
+	PANIC(ERROR_FOREIGN); //input is not supported in robomode
+#else
+	out->char_int = getchar();
+#endif // ROBOMODE
+	return 1;
 }
 
 static int std_random(machine_reg_t* in, machine_reg_t* out) {
@@ -561,7 +610,7 @@ static int std_tan(machine_reg_t* in, machine_reg_t* out) {
 }
 
 static int std_time(machine_reg_t* in, machine_reg_t* out) {
-	out->long_int = time(0);
+	out->long_int = time(NULL);
 	return 1;
 }
 
@@ -574,25 +623,131 @@ static int std_calloc(machine_reg_t* in, machine_reg_t* out) {
 	return 1;
 }
 
-int install_stdlib() {
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itof));
+#ifdef ROBOMODE
+
+//robot related foreign functions
+
+static enum pros_op_mode {
+	OP_MODE_UNINIT,
+
+	OP_MODE_AUTON,
+	OP_MODE_INIT,
+	OP_MODE_DISABLED,
+	OP_MODE_COMP_INIT,
+	OP_MODE_OP_CONTROL
+} op_mode = OP_MODE_UNINIT;
+
+static int robot_get_opmode(machine_reg_t* in, machine_reg_t* out) {
+	if (op_mode == OP_MODE_UNINIT)
+		PANIC(ERROR_INTERNAL);
+	out->long_int = op_mode - 1;
+	return 1;
+}
+
+static void robot_log_cstr(const char* str) {
+	static int16_t current_line = 0;
+	puts(str);
+#ifndef ROBOSIM
+	lcd_set_text(current_line++, str);
+#endif // !ROBOSIM
+	current_line %= 8;
+}
+
+static int robot_log_foreign(machine_reg_t* in, machine_reg_t* out) {
+	char* buffer = heap_alloc_str(in->heap_alloc);
+	robot_log_cstr(buffer);
+	free(buffer);
+	return 1;
+}
+
+static uint8_t selected_port;
+static int robot_select_port(machine_reg_t* in, machine_reg_t* out) {
+	selected_port = in->long_int;
+	return 1;
+}
+
+static int robot_move_motor(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("motor move(port: %"PRIu8", voltage: %"PRIi64")\n", selected_port, in->long_int);
+#else
+	PANIC_ON_FAIL(motor_move_voltage(selected_port, in->long_int), ERROR_ROBOT);
+#endif // ROBOSIM
+	return 1;
+}
+
+static int robot_get_position(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	puts("getting robot pos...(return 0 pos)");
+	out->long_int = 0;
+#else
+	out->long_int = motor_get_position(in->long_int);
+#endif // ROBOSIM
+	return 1;
+}
+
+static int robot_config_motor_gearset(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("Configured motor gearset(port: %"PRIu8", gearset: %"PRIi64")\n", selected_port, in->long_int);
+#else
+	PANIC_ON_FAIL(motor_set_gearing(selected_port, in->long_int) != PROS_ERR, ERROR_ROBOT);
+#endif // ROBOSIM
+	return 1;
+}
+
+static int robot_config_motor_encoding(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("Configured motor encoding(port: %"PRIu8", encoding: %"PRIi64")\n", selected_port, in->long_int);
+#else
+	PANIC_ON_FAIL(motor_set_encoder_units(selected_port, in->long_int) != PROS_ERR, ERROR_ROBOT);
+#endif // ROBOSIM
+	return 1;
+}
+
+static int robot_config_motor_reversed(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("Configured motor reverse(port: %"PRIu8", encoding: %s)\n", selected_port, in->bool_flag ? "true" : "false");
+#else
+	PANIC_ON_FAIL(motor_set_reversed(selected_port, in->bool_flag) != PROS_ERR, ERROR_ROBOT);
+#endif // ROBOSIM
+	return 1;
+}
+
+#endif // ROBOMODE
+
+static int install_stdlib() {
+	ESCAPE_ON_FAIL(init_ffi(&ffi_table)); //must init ffi here
+
+	//standard foreign functions
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itof)); //0
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_floor));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ceil));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_round));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ftos));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ftos)); //4
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_stof));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itos));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_stoi));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_out));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_out)); //8
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_in));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_random));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_random)); //10
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_sin));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_cos));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_tan));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itoc));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itoc)); //14
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ctoi));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_time));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_calloc)); //non-standard
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_calloc)); //17 //non-standard
+
+	//robot related foreign functions
+#ifdef ROBOMODE
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_opmode)); //18
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_log_foreign));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_select_port)); //20
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_move_motor));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_position));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_gearset)); //22
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_encoding));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_reversed));
+#endif // ROBOMODE
 	return 1;
 }
 

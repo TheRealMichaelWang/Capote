@@ -16,15 +16,24 @@
 #define READ_ARG argv[current_arg++]
 #define EXPECT_FLAG(FLAG) if(current_arg == argc || strcmp(READ_ARG, FLAG)) { ABORT(("Unexpected flag %s.\n", FLAG)); }
 
-int main(int argc, char** argv) {
+#define HAS_EXT_FLAG(FLAG) has_flag(FLAG, argv, extra_flags, argc)
+
+int has_flag(const char* flag, const char** argv, int extra_flag_start, int argc) {
+	for (int i = extra_flag_start; i < argc; i++)
+		if (!strcmp(argv[i], flag))
+			return 1;
+	return 0;
+}
+
+int main(int argc, const char** argv) {
 	int current_arg = 0;
 	const char* working_dir = READ_ARG;
 
-	puts("Capote SuperForth Compiler\n" 
+	puts("Capote SuperForth GCC/Pros Transpiler\n" 
 			"Written by Michael Wang 2022\n\n"
 			
-			"This is an experimental program, and may not support the latest SuperForth features. Expect any version signifigantly above or below SuperForth v1.0 programs to not compile.\n"
-			"This program was created for the HighTechHacks Hack-a-thon\n");
+			"This is an experimental program, and may not support the latest SuperForth features. Expect any version signifigantly above or below SuperForth v1.0 to not compile.\n"
+			"This program was created exclusivley for Husky Robotics. Do not distribute.\n");
 
 	EXPECT_FLAG("-s");
 	const char* source = READ_ARG;
@@ -38,7 +47,7 @@ int main(int argc, char** argv) {
 	ast_parser_t parser;
 	if (!init_ast_parser(&parser, &safe_gc, source)) {
 		free_safe_gc(&safe_gc, 1);
-		ABORT(("Error initializing ast-parser."));
+		ABORT(("Error initializing ast-parser. Cannot open file?"));
 	}
 
 	ast_t ast;
@@ -56,20 +65,23 @@ int main(int argc, char** argv) {
 	}
 
 	EXPECT_FLAG("-o");
-	const char* output = READ_ARG;
-	if (!strcmp(get_filepath_ext(output), "txt") || !strcmp(get_filepath_ext(output), "sf")) {
+	const char* output_path = READ_ARG;
+	if (!strcmp(get_filepath_ext(output_path), "txt") || !strcmp(get_filepath_ext(output_path), "sf")) {
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Stopped compilation: Potentially unwanted source file override.\n"
-			"Are you sure you want to override %s?", output));
+			"Are you sure you want to override %s?", output_path));
 	}
 
-	FILE* output_file = fopen(output, "wb");
+	int extra_flags = current_arg;
+
+	FILE* output_file = fopen(output_path, "wb");
 	if (!output_file) {
 		free_safe_gc(&safe_gc, 1);
-		ABORT(("Could not open output file: %s.", output));
+		ABORT(("Could not open output file: %s.", output_path));
 	}
 
-	if (!emit_c_header(output_file)) {
+	int robo_mode = HAS_EXT_FLAG("-vex") || HAS_EXT_FLAG("-robo");
+	if (!emit_c_header(output_file, robo_mode)) {
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Could not find stdheader.c. Please ensure it is in the compilers working directory."))
 	}
@@ -85,15 +97,21 @@ int main(int argc, char** argv) {
 		ABORT(("Failed to initialze label buffer."));
 	}
 
-	if (!emit_instructions(output_file, &label_buf, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count)) {
+	if (!emit_instructions(output_file, &label_buf, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count, HAS_EXT_FLAG("-dbg"))) {
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Failed to emit instructions. Potentially unrecognized opcode."));
 	}
-	emit_main(output_file);
+	emit_final(output_file, robo_mode, source);
 
 	free_safe_gc(&safe_gc, 1);
 	fclose(output_file);
 
 	puts("Finished compilation succesfully.");
+	if (robo_mode) {
+		printf("Copy and paste %s into the src directory of your pros project. ", output_path);
+		if (strcmp(output_path, "main.c"))
+			puts("Ensure main.c and main.cpp are removed from the src directory.");
+	}
+
 	return 0;
 }

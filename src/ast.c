@@ -1204,7 +1204,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			ast_statement_t* return_statement = ast_code_block_append(ast_parser, &value->data.procedure->exec_block);
 			ESCAPE_ON_FAIL(return_statement);
 			return_statement->type = AST_STATEMENT_RETURN_VALUE;
-			ESCAPE_ON_FAIL(parse_value(ast_parser, &return_statement->data.value, CURRENT_FRAME.return_type));
+			ESCAPE_ON_FAIL(parse_expression(ast_parser, &return_statement->data.value, CURRENT_FRAME.return_type, CURRENT_FRAME.return_type->type != TYPE_AUTO, 0));
 		}
 		else
 			ESCAPE_ON_FAIL(parse_code_block(ast_parser, &value->data.procedure->exec_block, 1, 0))
@@ -1423,11 +1423,11 @@ static int parse_expression(ast_parser_t* ast_parser, ast_value_t* value, typech
 
 		if (lhs.type.type == TYPE_AUTO) {
 			PANIC_ON_FAIL(value->data.binary_op->rhs.type.type != TYPE_AUTO, ast_parser, ERROR_UNEXPECTED_TYPE);
-			TYPE_COMP(&lhs.type, value->data.binary_op->rhs.type);
+			TYPE_COPY(&lhs.type, value->data.binary_op->rhs.type);
 		}
 		else if (value->data.binary_op->rhs.type.type == TYPE_AUTO) {
 			PANIC_ON_FAIL(lhs.type.type == TYPE_AUTO, ast_parser, ERROR_UNEXPECTED_TYPE);
-			TYPE_COMP(&value->data.binary_op->rhs.type, lhs.type);
+			TYPE_COPY(&value->data.binary_op->rhs.type, lhs.type);
 		}
 		else
 			PANIC_ON_FAIL(TYPE_COMP(&lhs.type, value->data.binary_op->rhs.type), ast_parser, ERROR_UNEXPECTED_TYPE);
@@ -1437,6 +1437,7 @@ static int parse_expression(ast_parser_t* ast_parser, ast_value_t* value, typech
 			value->type = lhs.type;
 		}
 
+		//divide by zero hard coded check
 		if ((value->data.binary_op->operator == TOK_DIVIDE)
 			&& (lhs.type.type == TYPE_PRIMITIVE_LONG && value->data.binary_op->rhs.data.primitive->data.long_int == 0))
 			PANIC(ast_parser, ERROR_DIVIDE_BY_ZERO);
