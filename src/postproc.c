@@ -603,7 +603,7 @@ static int ast_postproc_value(ast_parser_t* ast_parser, ast_value_t* value, post
 		value->from_var = value->data.set_index->array.from_var || value->data.set_index->value.from_var;
 		break;
 	case AST_VALUE_GET_INDEX:
-		ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.get_index->array, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, GET_TYPE_TRACE(value->data.get_index->array.type) == POSTPROC_TRACE_NONE ? POSTPROC_PARENT_IRRELEVANT : parent_stat, parent_proc, 0));
+		ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.get_index->array, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
 		ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.get_index->index, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
 		value->gc_status = postproc_type_to_gc_stat(value->data.get_index->array.gc_status, value->data.get_index->array.type.sub_types[0].type);
 		value->from_var = value->data.get_index->array.from_var;
@@ -629,7 +629,7 @@ static int ast_postproc_value(ast_parser_t* ast_parser, ast_value_t* value, post
 	case AST_VALUE_GET_PROP: {
 		typecheck_type_t prop_type;
 		ESCAPE_ON_FAIL(ast_record_sub_prop_type(ast_parser, value->data.get_prop->record.type, value->data.get_prop->property->hash_id, &prop_type));
-		ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.get_prop->record, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, GET_TYPE_TRACE(prop_type) == POSTPROC_TRACE_NONE ? POSTPROC_PARENT_IRRELEVANT : parent_stat, parent_proc, 0));
+		ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.get_prop->record, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
 		value->gc_status = postproc_type_to_gc_stat(value->data.get_prop->record.gc_status, prop_type.type);
 		value->from_var = value->data.get_prop->record.from_var;
 		free_typecheck_type(ast_parser->safe_gc, &prop_type);

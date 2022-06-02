@@ -1205,6 +1205,11 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			ESCAPE_ON_FAIL(return_statement);
 			return_statement->type = AST_STATEMENT_RETURN_VALUE;
 			ESCAPE_ON_FAIL(parse_expression(ast_parser, &return_statement->data.value, CURRENT_FRAME.return_type, CURRENT_FRAME.return_type->type != TYPE_AUTO, 0));
+			if (return_statement->data.value.type.type == TYPE_NOTHING) {
+				return_statement->type = AST_STATEMENT_VALUE;
+				ESCAPE_ON_FAIL(return_statement = ast_code_block_append(ast_parser, &value->data.procedure->exec_block));
+				return_statement->type = AST_STATEMENT_RETURN;
+			}
 		}
 		else
 			ESCAPE_ON_FAIL(parse_code_block(ast_parser, &value->data.procedure->exec_block, 1, 0))
