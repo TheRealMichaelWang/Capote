@@ -117,10 +117,11 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			}
 			break;
 		case COMPILER_OP_CODE_POP_ATOM_TYPESIGS:
-			fprintf(file_out, "if(%"PRIu16" > defined_sig_count) { PANIC(ERROR_STACK_OVERFLOW); }; \n\tdefined_sig_count -= %"PRIu16";", instructions[i].regs[0].reg, instructions[i].regs[0].reg);
+			fprintf(file_out, "if(%"PRIu16" > defined_sig_count) { PANIC(ERROR_STACK_OVERFLOW); }; \n", instructions[i].regs[0].reg);
 			for (uint16_t i = 0; i < instructions[i].regs[0].reg; i++) {
-				fprintf(file_out, "\n\tfree_defined_signature(&defined_signatures[%"PRIu16"]);", i);
+				fprintf(file_out, "\tfree_defined_signature(&defined_signatures[defined_sig_count - %"PRIu16"]);\n", i + 1);
 			}
+			fprintf(file_out, "\tdefined_sig_count -= %"PRIu16";", instructions[i].regs[0].reg);
 			break;
 		case COMPILER_OP_CODE_JUMP:
 			fprintf(file_out, "goto label%"PRIu16";", label_buf->ins_label[instructions[i].regs[0].reg]);
@@ -551,11 +552,11 @@ void emit_final(FILE* file_out, int robo_mode, const char* input_file) {
 	}
 	else {
 		fputs("\nint main() {\n"
-			"\tif(!init_all()) {\n\t\texit(ERROR_FAILIURE);\n\t}\n"
+			"\tif(!init_all()) {\n\t\texit(EXIT_FAILURE);\n\t}\n"
 			"\tif(!run()) {\n"
 			"\t\tprintf(\"Runtime Error: %s\", error_names[last_err]);\n"
 			"\t\tfree_runtime();\n"
-			"\t\texit(EXIT_FALIURE);\n"
+			"\t\texit(EXIT_FAILURE);\n"
 			"\t}\n"
 			"\tfree_runtime();\n"
 			"\texit(EXIT_SUCCESS);\n"
