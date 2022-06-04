@@ -702,20 +702,20 @@ static int parse_statment(ast_parser_t* ast_parser, ast_statement_t* statement, 
 
 		if (record_proto) {
 			if (record_proto->fully_defined)
-				PANIC(ast_parser, ERROR_REDECLARATION)
-				if (record_proto->generic_arguments) {
-					typecheck_type_t* req_types = safe_malloc(ast_parser->safe_gc, record_proto->generic_arguments * sizeof(typecheck_type_t));
-					PANIC_ON_FAIL(req_types, ast_parser, ERROR_MEMORY);
-					uint8_t decled_type_params;
-					ESCAPE_ON_FAIL(parse_type_params(ast_parser, req_types, &decled_type_params, 0, record_proto->generic_arguments));
-					for (uint_fast8_t i = 0; i < record_proto->generic_arguments; i++) {
-						if (typecheck_has_type(req_types[i], TYPE_TYPEARG) || !TYPE_COMP(&record_proto->generic_req_types[i], req_types[i]))
-							PANIC(ast_parser, ERROR_UNEXPECTED_TYPE);
-						free_typecheck_type(ast_parser->safe_gc, &record_proto->generic_req_types[i]);
-					}
-					safe_free(ast_parser->safe_gc, record_proto->generic_req_types);
-					record_proto->generic_req_types = req_types;
+				PANIC(ast_parser, ERROR_REDECLARATION);
+			if (record_proto->generic_arguments) {
+				typecheck_type_t* req_types = safe_malloc(ast_parser->safe_gc, record_proto->generic_arguments * sizeof(typecheck_type_t));
+				PANIC_ON_FAIL(req_types, ast_parser, ERROR_MEMORY);
+				uint8_t decled_type_params;
+				ESCAPE_ON_FAIL(parse_type_params(ast_parser, req_types, &decled_type_params, 0, record_proto->generic_arguments));
+				for (uint_fast8_t i = 0; i < record_proto->generic_arguments; i++) {
+					if (typecheck_has_type(req_types[i], TYPE_TYPEARG) || !TYPE_COMP(&record_proto->generic_req_types[i], req_types[i]))
+						PANIC(ast_parser, ERROR_UNEXPECTED_TYPE);
+					free_typecheck_type(ast_parser->safe_gc, &record_proto->generic_req_types[i]);
 				}
+				safe_free(ast_parser->safe_gc, record_proto->generic_req_types);
+				record_proto->generic_req_types = req_types;
+			}
 			if (use_req == AST_RECORD_FINAL)
 				PANIC_ON_FAIL(record_proto->child_record_count == 0, ast_parser, ERROR_CANNOT_EXTEND);
 		}
@@ -806,8 +806,16 @@ static int parse_statment(ast_parser_t* ast_parser, ast_statement_t* statement, 
 					record_proto->default_values = new_defaults;
 				}
 
+				//ESCAPE_ON_FAIL(ast_postproc_link_record(ast_parser, record_proto, NULL))
 				record_proto->default_values[record_proto->default_value_count].property = prop;
-				ESCAPE_ON_FAIL(parse_expression(ast_parser, &record_proto->default_values[record_proto->default_value_count].value, &prop->type, 0, 0));
+				if (prop >= record_proto->properties && prop < (record_proto->properties + record_proto->property_count))
+					ESCAPE_ON_FAIL(parse_expression(ast_parser, &record_proto->default_values[record_proto->default_value_count].value, &prop->type, 0, 0))
+				else {
+					typecheck_type_t real_prop_type;
+					ESCAPE_ON_FAIL(ast_record_sub_prop_type(ast_parser, *record_proto->base_record, prop->hash_id, &real_prop_type));
+					ESCAPE_ON_FAIL(parse_expression(ast_parser, &record_proto->default_values[record_proto->default_value_count].value, &real_prop_type, 0, 0));
+					free_typecheck_type(ast_parser->safe_gc, &real_prop_type);
+				}
 
 				record_proto->default_values[record_proto->default_value_count].prop_is_static = !(prop >= record_proto->properties && prop < (record_proto->properties + record_proto->property_count));
 				if (record_proto->default_values[record_proto->default_value_count].prop_is_static)
