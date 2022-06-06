@@ -668,17 +668,22 @@ static int ast_postproc_value(ast_parser_t* ast_parser, ast_value_t* value, post
 
 		for (uint_fast8_t i = 0; i < value->data.proc_call->argument_count; i++) {
 			ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.proc_call->arguments[i], typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
-			if ((value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_SUPEREXT_ALLOC || value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_UNKOWN_ALLOC) && parent_proc) {
-				value->data.proc_call->arguments[i].trace_status = POSTPROC_SUPERTRACE_CHILDREN;
-				value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_SUPERTRACED_ALLOC;
-			}
-			else if (value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_EXTERN_ALLOC) {
-				value->data.proc_call->arguments[i].trace_status = POSTPROC_TRACE_CHILDREN;
-				value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_TRACED_ALLOC;
+			if((value->type.type == TYPE_SUPER_RECORD && ast_parser->ast->record_protos[value->type.type_id]->do_gc) || 
+				(value->type.type == TYPE_SUPER_ARRAY && IS_REF_TYPE(value->type.sub_types[0]))) {
+				if ((value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_SUPEREXT_ALLOC || value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_UNKOWN_ALLOC) && parent_proc) {
+					value->data.proc_call->arguments[i].trace_status = POSTPROC_SUPERTRACE_CHILDREN;
+					value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_SUPERTRACED_ALLOC;
+				}
+				else if (value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_EXTERN_ALLOC) {
+					value->data.proc_call->arguments[i].trace_status = POSTPROC_TRACE_CHILDREN;
+					value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_TRACED_ALLOC;
+				}
 			}
 		}
-		if (IS_REF_TYPE(value->type))
+		if (IS_REF_TYPE(value->type)) {
 			value->gc_status = POSTPROC_GC_UNKOWN_ALLOC;
+			PROC_DO_GC;
+		}
 		else if (value->type.type == TYPE_TYPEARG)
 			value->gc_status = POSTPROC_GC_LOCAL_DYNAMIC;
 		else
