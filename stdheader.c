@@ -7,6 +7,17 @@
 #ifndef ROBOSIM
 #include "main.h"
 #endif // ROBOSIM
+#else
+
+//sleep related imports
+#ifdef WIN32
+#include <windows.h>
+#elif _POSIX_C_SOURCE >= 199309L
+#include <time.h>   // for nanosleep
+#else
+#include <unistd.h> // for usleep
+#endif
+
 #endif
 
 #include <inttypes.h>
@@ -614,12 +625,27 @@ static int std_time(machine_reg_t* in, machine_reg_t* out) {
 	return 1;
 }
 
-static int std_calloc(machine_reg_t* in, machine_reg_t* out) {
-	out->heap_alloc = alloc(in->long_int, GC_TRACE_MODE_NONE);
-	for (uint_fast16_t i = 0; i < out->heap_alloc->limit; i++) {
-		out->heap_alloc->registers[i].long_int = 0;
-		out->heap_alloc->init_stat[i] = 1;
-	}
+static int std_sleep(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOMODE
+	delay(in->long_int);
+#else
+
+#define milliseconds in->long_int
+#ifdef WIN32
+	Sleep(milliseconds);
+#elif _POSIX_C_SOURCE >= 199309L
+	struct timespec ts;
+	ts.tv_sec = milliseconds / 1000;
+	ts.tv_nsec = (milliseconds % 1000) * 1000000;
+	nanosleep(&ts, NULL);
+#else
+	if (milliseconds >= 1000)
+		sleep(milliseconds / 1000);
+	usleep((milliseconds % 1000) * 1000);
+#endif
+#undef milliseconds
+
+#endif // ROBOMODE
 	return 1;
 }
 
@@ -712,6 +738,24 @@ static int robot_config_motor_reversed(machine_reg_t* in, machine_reg_t* out) {
 	return 1;
 }
 
+static int robot_get_rpm(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("Getting rpm of motor %"PRIu8"(returning 0 rmp).\n", in->long_int);
+#else
+	out->float_int = motor_get_actual_velocity(in->long_int);
+#endif // ROBOSIM
+	return 1;
+}
+
+static int robot_set_zero_encoder(machine_reg_t* in, machine_reg_t* out) {
+#ifdef ROBOSIM
+	printf("Setting encoder position to zero for motor %"PRIu8".\n", in->long_int);
+#else
+	PANIC_ON_FAIL(motor_set_zero_position(in->long_int, motor_get_position(in->long_int)) != PROS_ERR, ERROR_ROBOT);
+#endif // ROBOSIM
+	return 1;
+}
+
 #endif // ROBOMODE
 
 static int install_stdlib() {
@@ -735,7 +779,7 @@ static int install_stdlib() {
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_itoc)); //14
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ctoi));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_time));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_calloc)); //17 //non-standard
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_sleep)); //17
 
 	//robot related foreign functions
 #ifdef ROBOMODE
@@ -747,6 +791,8 @@ static int install_stdlib() {
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_gearset)); //22
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_encoding));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_reversed));
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_rpm)); //25
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_set_zero_encoder));
 #endif // ROBOMODE
 	return 1;
 }
