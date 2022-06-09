@@ -65,42 +65,42 @@ static int ffi_include_func(ffi_t* ffi_table, foreign_func func) {
 #define FRAME_LIMIT 1000 //call frame limit
 
 typedef enum error {
-	ERROR_NONE,
-	ERROR_MEMORY,
-	ERROR_INTERNAL,
+	SUPERFORTH_ERROR_NONE,
+	SUPERFORTH_ERROR_MEMORY,
+	SUPERFORTH_ERROR_INTERNAL,
 
 	//syntax errors
-	ERROR_UNEXPECTED_TOK,
+	SUPERFORTH_ERROR_UNEXPECTED_TOK,
 
-	ERROR_READONLY,
-	ERROR_TYPE_NOT_ALLOWED,
+	SUPERFORTH_ERROR_READONLY,
+	SUPERFORTH_ERROR_TYPE_NOT_ALLOWED,
 
-	ERROR_UNDECLARED,
-	ERROR_REDECLARATION,
+	SUPERFORTH_ERROR_UNDECLARED,
+	SUPERFORTH_ERROR_REDECLARATION,
 
-	ERROR_UNEXPECTED_TYPE,
-	ERROR_UNEXPECTED_ARGUMENT_SIZE,
+	SUPERFORTH_ERROR_UNEXPECTED_TYPE,
+	SUPERFORTH_ERROR_UNEXPECTED_ARGUMENT_SIZE,
 
-	ERROR_CANNOT_RETURN,
-	ERROR_CANNOT_CONTINUE,
-	ERROR_CANNOT_BREAK,
-	ERROR_CANNOT_EXTEND,
-	ERROR_CANNOT_INIT,
+	SUPERFORTH_ERROR_CANNOT_RETURN,
+	SUPERFORTH_ERROR_CANNOT_CONTINUE,
+	SUPERFORTH_ERROR_CANNOT_BREAK,
+	SUPERFORTH_ERROR_CANNOT_EXTEND,
+	SUPERFORTH_ERROR_CANNOT_INIT,
 
 	//virtual-machine errors
-	ERROR_INDEX_OUT_OF_RANGE,
-	ERROR_DIVIDE_BY_ZERO,
-	ERROR_STACK_OVERFLOW,
-	ERROR_READ_UNINIT,
+	SUPERFORTH_ERROR_INDEX_OUT_OF_RANGE,
+	SUPERFORTH_ERROR_DIVIDE_BY_ZERO,
+	SUPERFORTH_ERROR_STACK_OVERFLOW,
+	SUPERFORTH_ERROR_READ_UNINIT,
 
-	ERROR_UNRETURNED_FUNCTION,
+	SUPERFORTH_ERROR_UNRETURNED_FUNCTION,
 	
-	ERROR_ABORT,
-	ERROR_FOREIGN,
+	SUPERFORTH_ERROR_ABORT,
+	SUPERFORTH_ERROR_FOREIGN,
 
-	ERROR_CANNOT_OPEN_FILE,
-	ERROR_ROBOT
-} superforth_error_t;
+	SUPERFORTH_ERROR_CANNOT_OPEN_FILE,
+	SUPERFORTH_ERROR_ROBOT
+} superforth_SUPERFORTH_ERROR_t;
 
 typedef struct machine_type_signature machine_type_sig_t;
 typedef struct machine_type_signature {
@@ -183,9 +183,9 @@ static uint16_t* trace_frame_bounds;
 static heap_alloc_t** freed_heap_allocs; //recycled heap allocations/objects
 
 //some debuging flags
-static superforth_error_t last_err;
+static superforth_SUPERFORTH_ERROR_t last_err;
 static uint64_t last_ip;
-#define PANIC_ON_FAIL(COND, ERR) {if(!(COND, ERR)) {last_err = ERR; return 0;}}
+#define PANIC_ON_FAIL(COND, ERR) {if(!(COND)) {last_err = ERR; return 0;}}
 #define PANIC(ERR) {last_err = ERR; return 0;}
 
 //more runtime stuff
@@ -195,8 +195,16 @@ static ffi_t ffi_table;
 
 //type signature declarations
 static uint16_t* type_table;
+static int16_t** type_extension_args;
+static uint8_t* type_extension_arg_count;
+static uint16_t type_count;
+
 static machine_type_sig_t* defined_signatures;
 static uint16_t defined_sig_count, alloced_sig_defs;
+
+static heap_alloc_t** reset_stack;
+static uint16_t reset_count;
+static uint16_t alloced_reset;
 
 static int ffi_invoke(ffi_t* ffi_table, machine_reg_t* id_reg, machine_reg_t* in_reg, machine_reg_t* out_reg) {
 	if (id_reg->long_int >= ffi_table->func_count || id_reg->long_int < 0)
@@ -206,10 +214,10 @@ static int ffi_invoke(ffi_t* ffi_table, machine_reg_t* id_reg, machine_reg_t* in
 
 heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 #define CHECK_HEAP_COUNT if(heap_count == UINT16_MAX) \
-							PANIC(ERROR_MEMORY); \
+							PANIC(SUPERFORTH_ERROR_MEMORY); \
 						if (heap_count == alloced_heap_allocs) { \
 							heap_alloc_t** new_heap_allocs = realloc(heap_allocs, (alloced_heap_allocs += 100) * sizeof(heap_alloc_t*)); \
-							PANIC_ON_FAIL(new_heap_allocs, ERROR_MEMORY); \
+							PANIC_ON_FAIL(new_heap_allocs, SUPERFORTH_ERROR_MEMORY); \
 							heap_allocs = new_heap_allocs; \
 						}
 
@@ -224,7 +232,7 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 	}
 	else {
 		heap_alloc = malloc(sizeof(heap_alloc_t));
-		PANIC_ON_FAIL(heap_alloc, ERROR_MEMORY);
+		PANIC_ON_FAIL(heap_alloc, SUPERFORTH_ERROR_MEMORY);
 		CHECK_HEAP_COUNT;
 		heap_allocs[heap_count++] = heap_alloc;
 		heap_alloc->reg_with_table = 1;
@@ -234,12 +242,12 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 	heap_alloc->gc_flag = 0;
 	heap_alloc->trace_mode = trace_mode;
 	heap_alloc->type_sig = NULL;
-	PANIC_ON_FAIL(heap_alloc, ERROR_MEMORY);
+	PANIC_ON_FAIL(heap_alloc, SUPERFORTH_ERROR_MEMORY);
 	if (req_size) {
-		PANIC_ON_FAIL(heap_alloc->registers = malloc(req_size * sizeof(machine_reg_t)), ERROR_MEMORY);
-		PANIC_ON_FAIL(heap_alloc->init_stat = calloc(req_size, sizeof(int)), ERROR_MEMORY);
+		PANIC_ON_FAIL(heap_alloc->registers = malloc(req_size * sizeof(machine_reg_t)), SUPERFORTH_ERROR_MEMORY);
+		PANIC_ON_FAIL(heap_alloc->init_stat = calloc(req_size, sizeof(int)), SUPERFORTH_ERROR_MEMORY);
 		if (trace_mode == GC_TRACE_MODE_SOME)
-			PANIC_ON_FAIL(heap_alloc->trace_stat = malloc(req_size * sizeof(int)), ERROR_MEMORY);
+			PANIC_ON_FAIL(heap_alloc->trace_stat = malloc(req_size * sizeof(int)), SUPERFORTH_ERROR_MEMORY);
 	}
 	return heap_alloc;
 #undef CHECK_HEAP_COUNT
@@ -247,7 +255,7 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 
 static int install_stdlib();
 static int init_runtime(int type_table_size) {
-	last_err = ERROR_NONE;
+	last_err = SUPERFORTH_ERROR_NONE;
 	global_offset = 0;
 	position_count = 0;
 	heap_frame = 0;
@@ -255,6 +263,8 @@ static int init_runtime(int type_table_size) {
 	trace_count = 0;
 	freed_heap_count = 0;
 	defined_sig_count = 0;
+	type_count = type_table_size;
+	reset_count = 0;
 
 	ESCAPE_ON_FAIL(heap_allocs = malloc((alloced_heap_allocs = FRAME_LIMIT) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(heap_traces = malloc((alloced_trace_allocs = 128) * sizeof(heap_alloc_t*)));
@@ -262,7 +272,10 @@ static int init_runtime(int type_table_size) {
 	ESCAPE_ON_FAIL(trace_frame_bounds = malloc(FRAME_LIMIT * sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(freed_heap_allocs = malloc((alloc_freed_heaps = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(type_table = calloc(type_table_size, sizeof(uint16_t)));
+	ESCAPE_ON_FAIL(type_extension_args = calloc(type_table_size, sizeof(uint16_t*)));
+	ESCAPE_ON_FAIL(type_extension_arg_count = calloc(type_table_size, sizeof(uint8_t)));
 	ESCAPE_ON_FAIL(defined_signatures = malloc((alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
+	ESCAPE_ON_FAIL(reset_stack = malloc((alloced_reset = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(install_stdlib());
 	return 1;
 }
@@ -291,7 +304,7 @@ static void free_heap_alloc(heap_alloc_t* heap_alloc) {
 static int recycle_heap_alloc(heap_alloc_t* heap_alloc) {
 	if (freed_heap_count == alloc_freed_heaps) {
 		heap_alloc_t** new_freed_heaps = realloc(freed_heap_allocs, (alloc_freed_heaps += 10) * sizeof(heap_alloc_t*));
-		PANIC_ON_FAIL(new_freed_heaps, ERROR_MEMORY);
+		PANIC_ON_FAIL(new_freed_heaps, SUPERFORTH_ERROR_MEMORY);
 		freed_heap_allocs = new_freed_heaps;
 	}
 	freed_heap_allocs[freed_heap_count++] = heap_alloc;
@@ -326,13 +339,20 @@ static void free_runtime() {
 		free(freed_heap_allocs[i]);
 	for (uint_fast16_t i = 0; i < defined_sig_count; i++)
 		free_defined_signature(&defined_signatures[i]);
+	for (uint_fast16_t i = 0; i < type_count; i++) {
+		if (type_extension_args[i])
+			free(type_extension_args[i]);
+	}
 	free(heap_allocs);
 	free(heap_traces);
 	free(trace_frame_bounds);
 	free(freed_heap_allocs);
 	free(type_table);
+	free(type_extension_args);
+	free(type_extension_arg_count);
 	free(defined_signatures);
 	free(ffi_table.func_table);
+	free(reset_stack);
 }
 
 static machine_type_sig_t* new_type_sig() {
@@ -355,20 +375,47 @@ static int type_signature_match(machine_type_sig_t match_signature, machine_type
 
 	if (match_signature.super_signature != parent_signature.super_signature) {
 		uint16_t match_super_sig = match_signature.super_signature;
+
+		uint8_t match_sub_sig_count = match_signature.sub_type_count;
+		machine_type_sig_t* match_sub_sigs = malloc(match_sub_sig_count * sizeof(machine_type_sig_t));
+		PANIC_ON_FAIL(match_sub_sigs, SUPERFORTH_ERROR_MEMORY);
+		memcpy(match_sub_sigs, match_signature.sub_types, match_sub_sig_count * sizeof(machine_type_sig_t));
+
 		while (type_table[match_super_sig]) {
+			match_sub_sig_count = type_extension_arg_count[match_super_sig];
+			machine_type_sig_t* new_match_sub_sigs = malloc(match_sub_sig_count * sizeof(machine_type_sig_t));
+			PANIC_ON_FAIL(new_match_sub_sigs, SUPERFORTH_ERROR_MEMORY);
+			for (uint_fast8_t i = 0; i < match_sub_sig_count; i++) {
+				if (type_extension_args[match_super_sig][i] >= 0)
+					new_match_sub_sigs[i] = match_sub_sigs[type_extension_args[match_super_sig][i]];
+				else
+					new_match_sub_sigs[i] = defined_signatures[-(type_extension_args[match_super_sig][i] + 1)];
+			}
+			free(match_sub_sigs);
+			match_sub_sigs = new_match_sub_sigs;
 			match_super_sig = type_table[match_super_sig];
-			if (match_super_sig == parent_signature.super_signature)
-				goto super_sig_check_ok;
+
+			if (match_super_sig == parent_signature.super_signature) {
+				if (match_sub_sig_count != parent_signature.sub_type_count) {
+					free(match_sub_sigs);
+					return 0;
+				}
+				for (uint_fast8_t i = 0; i < match_sub_sig_count; i++) 
+					if (!type_signature_match(match_sub_sigs[i], parent_signature.sub_types[i])) {
+						free(match_sub_sigs);
+						return 0;
+					}
+
+				free(match_sub_sigs);
+				return 1;
+			}
 		}
+		free(match_sub_sigs);
 		return 0;
 	}
-super_sig_check_ok:
-	if (match_signature.sub_type_count != parent_signature.sub_type_count)
-		return 0;
-	for (uint_fast8_t i = 0; i < parent_signature.sub_type_count; i++) {
-		if (!type_signature_match(match_signature.sub_types[i], parent_signature.sub_types[i]))
-			return 0;
-	}
+	ESCAPE_ON_FAIL(match_signature.sub_type_count == parent_signature.sub_type_count);
+	for (uint_fast8_t i = 0; i < parent_signature.sub_type_count; i++)
+		ESCAPE_ON_FAIL(type_signature_match(match_signature.sub_types[i], parent_signature.sub_types[i]));
 	return 1;
 }
 
@@ -379,7 +426,7 @@ static int atomize_heap_type_sig(machine_type_sig_t prototype, machine_type_sig_
 	else {
 		output->super_signature = prototype.super_signature;
 		if (output->sub_type_count = prototype.sub_type_count) {
-			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), ERROR_MEMORY);
+			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), SUPERFORTH_ERROR_MEMORY);
 			for (uint_fast8_t i = 0; i < output->sub_type_count; i++)
 				ESCAPE_ON_FAIL(atomize_heap_type_sig(prototype.sub_types[i], &output->sub_types[i]));
 		}
@@ -407,35 +454,37 @@ static void supertrace(heap_alloc_t* heap_alloc) {
 }
 
 //traces and pushes traced heap allocs onto a reset stack
-static void trace(heap_alloc_t* heap_alloc, heap_alloc_t** reset_stack, uint16_t* reset_count) {
+static int trace(heap_alloc_t* heap_alloc) {
 	if (heap_alloc->gc_flag)
-		return;
+		return 1;
 
-	if (*reset_count == 128) {
-		supertrace(heap_alloc);
-		return;
+	if (reset_count == alloced_reset) {
+		heap_alloc_t** new_reset_stack = realloc(reset_stack, (alloced_reset += 32) * sizeof(heap_alloc_t*));
+		PANIC_ON_FAIL(new_reset_stack, SUPERFORTH_ERROR_MEMORY);
+		reset_stack = new_reset_stack;
 	}
 
 	heap_alloc->gc_flag = 1;
-	reset_stack[(*reset_count)++] = heap_alloc;
+	reset_stack[reset_count++] = heap_alloc;
+
 	switch (heap_alloc->trace_mode) {
 	case GC_TRACE_MODE_ALL:
 		for (uint_fast16_t i = 0; i < heap_alloc->limit; i++)
 			if (heap_alloc->init_stat[i])
-				trace(heap_alloc->registers[i].heap_alloc, reset_stack, reset_count);
+				ESCAPE_ON_FAIL(trace(heap_alloc->registers[i].heap_alloc));
 		break;
 	case GC_TRACE_MODE_SOME:
 		for (uint_fast16_t i = 0; i < heap_alloc->limit; i++)
 			if (heap_alloc->init_stat[i] && heap_alloc->trace_stat[i])
-				trace(heap_alloc->registers[i].heap_alloc, reset_stack, reset_count);
+				ESCAPE_ON_FAIL(trace(heap_alloc->registers[i].heap_alloc));
 		break;
 	}
+	return 1;
 }
 
 //cleans the current gc-frame
 static int gc_clean() {
-	uint16_t reseted_heap_count = 0;
-	static heap_alloc_t* reset_stack[128];
+	reset_count = 0;
 
 	--heap_frame;
 	heap_alloc_t** frame_start = &heap_allocs[heap_frame_bounds[heap_frame]];
@@ -448,7 +497,7 @@ static int gc_clean() {
 				supertrace(heap_traces[i]);
 			}
 			else
-				trace(heap_traces[i], reset_stack, &reseted_heap_count);
+				ESCAPE_ON_FAIL(trace(heap_traces[i]));
 
 		for (heap_alloc_t** current_alloc = frame_start; current_alloc != frame_end; current_alloc++) {
 			if ((*current_alloc)->gc_flag)
@@ -464,7 +513,7 @@ static int gc_clean() {
 		}
 		heap_count = frame_start - heap_allocs;
 		trace_count = trace_frame_bounds[heap_frame];
-		for (uint_fast16_t i = 0; i < reseted_heap_count; i++)
+		for (uint_fast16_t i = 0; i < reset_count; i++)
 			reset_stack[i]->gc_flag = 0;
 	}
 	else {
@@ -495,7 +544,7 @@ static int64_t longpow(int64_t base, int64_t exp) {
 
 #define TRACE_COUNT_CHECK if (trace_count == alloced_trace_allocs) {\
 								heap_alloc_t** new_trace_stack = realloc(heap_traces, (alloced_trace_allocs += 10) * sizeof(heap_alloc_t*));\
-								PANIC_ON_FAIL(new_trace_stack, ERROR_MEMORY);\
+								PANIC_ON_FAIL(new_trace_stack, SUPERFORTH_ERROR_MEMORY);\
 								heap_traces = new_trace_stack;\
 						  };
 
@@ -545,7 +594,7 @@ static int std_ftos(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_stof(machine_reg_t* in, machine_reg_t* out) {
 	char* buffer = heap_alloc_str(in->heap_alloc);
-	PANIC_ON_FAIL(buffer, ERROR_MEMORY);
+	PANIC_ON_FAIL(buffer, SUPERFORTH_ERROR_MEMORY);
 	char* ferror;
 	out->float_int = strtod(buffer, &ferror);
 	free(buffer);
@@ -566,7 +615,7 @@ static int std_itos(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_stoi(machine_reg_t* in, machine_reg_t* out) {
 	char* buffer = heap_alloc_str(in->heap_alloc);
-	PANIC_ON_FAIL(buffer, ERROR_MEMORY);
+	PANIC_ON_FAIL(buffer, SUPERFORTH_ERROR_MEMORY);
 	out->long_int = strtol(buffer, NULL, 10);
 	free(buffer);
 	return 1;
@@ -584,7 +633,7 @@ static int std_itoc(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_out(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOMODE
-	PANIC(ERROR_FOREIGN); //input is not supported in robomode
+	PANIC(SUPERFORTH_ERROR_FOREIGN); //input is not supported in robomode
 #else
 	putchar(in->char_int);
 #endif
@@ -593,7 +642,7 @@ static int std_out(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_in(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOMODE
-	PANIC(ERROR_FOREIGN); //input is not supported in robomode
+	PANIC(SUPERFORTH_ERROR_FOREIGN); //input is not supported in robomode
 #else
 	out->char_int = getchar();
 #endif // ROBOMODE
@@ -665,7 +714,7 @@ static enum pros_op_mode {
 
 static int robot_get_opmode(machine_reg_t* in, machine_reg_t* out) {
 	if (op_mode == OP_MODE_UNINIT)
-		PANIC(ERROR_INTERNAL);
+		PANIC(SUPERFORTH_ERROR_INTERNAL);
 	out->long_int = op_mode - 1;
 	return 1;
 }
@@ -696,7 +745,7 @@ static int robot_move_motor(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("motor move(port: %"PRIu8", voltage: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_move_voltage(selected_port, in->long_int), ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_move_voltage(selected_port, in->long_int), SUPERFORTH_ERROR_ROBOT);
 #endif // ROBOSIM
 	return 1;
 }
@@ -715,7 +764,7 @@ static int robot_config_motor_gearset(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor gearset(port: %"PRIu8", gearset: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_gearing(selected_port, in->long_int) != PROS_ERR, ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_gearing(selected_port, in->long_int) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
 #endif // ROBOSIM
 	return 1;
 }
@@ -724,7 +773,7 @@ static int robot_config_motor_encoding(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor encoding(port: %"PRIu8", encoding: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_encoder_units(selected_port, in->long_int) != PROS_ERR, ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_encoder_units(selected_port, in->long_int) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
 #endif // ROBOSIM
 	return 1;
 }
@@ -733,7 +782,7 @@ static int robot_config_motor_reversed(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor reverse(port: %"PRIu8", encoding: %s)\n", selected_port, in->bool_flag ? "true" : "false");
 #else
-	PANIC_ON_FAIL(motor_set_reversed(selected_port, in->bool_flag) != PROS_ERR, ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_reversed(selected_port, in->bool_flag) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
 #endif // ROBOSIM
 	return 1;
 }
@@ -751,7 +800,7 @@ static int robot_set_zero_encoder(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Setting encoder position to zero for motor %"PRIu8".\n", in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_zero_position(in->long_int, motor_get_position(in->long_int)) != PROS_ERR, ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_zero_position(in->long_int, motor_get_position(in->long_int)) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
 #endif // ROBOSIM
 	return 1;
 }

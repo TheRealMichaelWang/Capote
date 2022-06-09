@@ -667,16 +667,25 @@ static int ast_postproc_value(ast_parser_t* ast_parser, ast_value_t* value, post
 		}
 
 		for (uint_fast8_t i = 0; i < value->data.proc_call->argument_count; i++) {
-			ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, &value->data.proc_call->arguments[i], typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
-			if((value->type.type == TYPE_SUPER_RECORD && ast_parser->ast->record_protos[value->type.type_id]->do_gc) || 
-				(value->type.type == TYPE_SUPER_ARRAY && IS_REF_TYPE(value->type.sub_types[0]))) {
-				if ((value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_SUPEREXT_ALLOC || value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_UNKOWN_ALLOC) && parent_proc) {
-					value->data.proc_call->arguments[i].trace_status = POSTPROC_SUPERTRACE_CHILDREN;
-					value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_SUPERTRACED_ALLOC;
+			ast_value_t* arg = &value->data.proc_call->arguments[i];
+
+			ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, arg, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
+
+			if((arg->type.type == TYPE_SUPER_RECORD && ast_parser->ast->record_protos[value->type.type_id]->do_gc) || 
+				(arg->type.type == TYPE_SUPER_ARRAY && 
+					(IS_REF_TYPE(arg->type.sub_types[0]) || arg->type.sub_types[0].type == TYPE_TYPEARG) )) {
+
+				if ((arg->gc_status == POSTPROC_GC_SUPEREXT_ALLOC || arg->gc_status == POSTPROC_GC_UNKOWN_ALLOC) && parent_proc) {
+					arg->trace_status = POSTPROC_SUPERTRACE_CHILDREN;
+					arg->gc_status = POSTPROC_GC_SUPERTRACED_ALLOC;
 				}
-				else if (value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_EXTERN_ALLOC) {
-					value->data.proc_call->arguments[i].trace_status = POSTPROC_TRACE_CHILDREN;
-					value->data.proc_call->arguments[i].gc_status = POSTPROC_GC_TRACED_ALLOC;
+				else if (arg->gc_status == POSTPROC_GC_EXTERN_ALLOC) {
+					arg->trace_status = POSTPROC_TRACE_CHILDREN;
+					arg->gc_status = POSTPROC_GC_TRACED_ALLOC;
+				}
+				else if (value->data.proc_call->arguments[i].gc_status == POSTPROC_GC_EXTERN_DYNAMIC) {
+					arg->trace_status = GET_TYPE_TRACE(arg->type.sub_types[0]);
+					arg->gc_status = POSTPROC_GC_TRACED_ALLOC;
 				}
 			}
 		}
@@ -748,7 +757,7 @@ int ast_postproc_link_record(ast_parser_t* ast_parser, ast_record_proto_t* recor
 			record->index_offset = 0;
 		
 		for (uint_fast8_t i = 0; i < record->property_count; i++) {
-			if (IS_REF_TYPE(record->properties[i].type))
+			if (IS_REF_TYPE(record->properties[i].type) || record->properties[i].type.type == TYPE_TYPEARG)
 				record->do_gc = 1;
 			record->properties[i].id += record->index_offset;
 		}

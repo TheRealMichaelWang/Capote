@@ -246,6 +246,18 @@ int substitute_value_types(ast_parser_t* ast_parser, ast_value_t input_val, type
 			ESCAPE_ON_FAIL(substitute_value_types(ast_parser, input_val.data.alloc_record.init_values[i].value, input_typeargs, &output_val->data.alloc_record.init_values[i].value));
 		}
 		break;
+	case AST_VALUE_PROC_CALL:
+		PANIC_ON_FAIL(output_val->data.proc_call = safe_malloc(ast_parser->safe_gc, sizeof(ast_call_proc_t)), ast_parser, ERROR_MEMORY);
+		*output_val->data.proc_call = *input_val.data.proc_call;
+		PANIC_ON_FAIL(output_val->data.proc_call->typeargs = safe_malloc(ast_parser->safe_gc, input_val.data.proc_call->procedure.type.type_id * sizeof(typecheck_type_t)), ast_parser, ERROR_MEMORY);
+
+		for (uint_fast8_t i = 0; i < input_val.data.proc_call->procedure.type.type_id; i++) {
+			TYPE_COPY(&output_val->data.proc_call->typeargs[i], input_val.data.proc_call->typeargs[i]);
+			ESCAPE_ON_FAIL(typeargs_substitute(ast_parser->safe_gc, input_typeargs, &output_val->data.proc_call->typeargs[i]));
+		}
+		for (uint_fast8_t i = 0; i < input_val.data.proc_call->argument_count; i++)
+			ESCAPE_ON_FAIL(substitute_value_types(ast_parser, input_val.data.proc_call->arguments[i], input_typeargs, &output_val->data.proc_call->arguments[i]));
+		break;
 	}
 	return 1;
 }
@@ -454,20 +466,25 @@ static ast_primitive_t* parse_prim_value(ast_parser_t* ast_parser) {
 	switch (LAST_TOK.type)
 	{
 	case TOK_NUMERICAL:
+		primitive.type = AST_PRIMITIVE_LONG;
 		for (uint_fast32_t i = 0; i < LAST_TOK.length; i++) {
-			if ((LAST_TOK.str[i] == 'f' && i == LAST_TOK.length - 1) || LAST_TOK.str[i] == '.') {
+			if (LAST_TOK.str[i] == '.')
+				primitive.type = AST_PRIMITIVE_FLOAT;
+			if (LAST_TOK.str[i] == 'f') { //parse as float
 				primitive.data.float_int = strtod(LAST_TOK.str, NULL);
 				primitive.type = AST_PRIMITIVE_FLOAT;
-				goto end;
+				goto end_parse_num;
 			}
-			else if (LAST_TOK.str[i] == 'h' && i == LAST_TOK.length - 1) {
+			else if (LAST_TOK.str[i] == 'h') { //parse hexadecimal
 				primitive.data.long_int = strtol(LAST_TOK.str, NULL, 16);
-				primitive.type = AST_PRIMITIVE_LONG;
-				goto end;
+				goto end_parse_num;
 			}
 		}
-		primitive.data.long_int = strtol(LAST_TOK.str, NULL, 10);
-		primitive.type = AST_PRIMITIVE_LONG;
+		if(primitive.type == AST_PRIMITIVE_LONG)
+			primitive.data.long_int = strtol(LAST_TOK.str, NULL, 10);
+		else
+			primitive.data.float_int = strtod(LAST_TOK.str, NULL);
+end_parse_num:
 		break;
 	case TOK_CHAR: {
 		primitive.type = AST_PRIMITIVE_CHAR;
@@ -485,7 +502,6 @@ static ast_primitive_t* parse_prim_value(ast_parser_t* ast_parser) {
 	default:
 		PANIC(ast_parser, ERROR_UNEXPECTED_TOK);
 	};
-end:
 	READ_TOK;
 	return ast_add_prim_value(ast_parser, primitive);
 }

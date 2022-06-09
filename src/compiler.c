@@ -614,8 +614,22 @@ static int compile_code_block(compiler_t* compiler, ast_code_block_t code_block,
 			EMIT_INS(INS1(COMPILER_OP_CODE_ABORT, GLOB_REG(ERROR_ABORT)));
 			break;
 		case AST_STATEMENT_RECORD_PROTO:
-			if (current_statement->data.record_proto->base_record)
-				EMIT_INS(INS2(COMPILER_OP_CODE_TYPE_RELATE, GLOB_REG(current_statement->data.record_proto->id + TYPE_SUPER_RECORD), GLOB_REG(compiler->ast->record_protos[current_statement->data.record_proto->base_record->type_id]->id + TYPE_SUPER_RECORD)));
+			if (current_statement->data.record_proto->base_record) {
+				ast_record_proto_t* record = current_statement->data.record_proto;
+				compiler->target_machine->type_table[record->id + TYPE_SUPER_RECORD] = compiler->ast->record_protos[record->base_record->type_id]->id + TYPE_SUPER_RECORD;
+				
+				PANIC_ON_FAIL(compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD] = safe_malloc(compiler->safe_gc, record->base_record->sub_type_count * sizeof(int16_t)), compiler, ERROR_MEMORY);
+				compiler->target_machine->type_extension_arg_count[record->id + TYPE_SUPER_RECORD] = record->base_record->sub_type_count;
+				for (uint_fast8_t i = 0; i < record->base_record->sub_type_count; i++) {
+					if (record->base_record->sub_types[i].type == TYPE_TYPEARG)
+						compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD][i] = record->base_record->sub_types[i].type_id;
+					else {
+						uint16_t sig_id = compiler->target_machine->defined_sig_count;
+						ESCAPE_ON_FAIL(compiler_define_typesig(compiler, proc, record->base_record->sub_types[i]));
+						compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD][i] = -1 - sig_id;
+					}
+				}
+			}
 			break;
 		}
 	return 1;

@@ -67,6 +67,7 @@ int main(int argc, const char** argv) {
 	EXPECT_FLAG("-o");
 	const char* output_path = READ_ARG;
 	if (!strcmp(get_filepath_ext(output_path), "txt") || !strcmp(get_filepath_ext(output_path), "sf")) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Stopped compilation: Potentially unwanted source file override.\n"
 			"Are you sure you want to override %s?", output_path));
@@ -76,33 +77,39 @@ int main(int argc, const char** argv) {
 
 	FILE* output_file = fopen(output_path, "wb");
 	if (!output_file) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Could not open output file: %s.", output_path));
 	}
 
 	int robo_mode = HAS_EXT_FLAG("-vex") || HAS_EXT_FLAG("-robo");
 	if (!emit_c_header(output_file, robo_mode)) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Could not find stdheader.c. Please ensure it is in the compilers working directory."))
 	}
 	emit_constants(output_file, &ast, &machine);
 	if (!emit_init(output_file, &ast, &machine)) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Could not emit initialization routines."));
 	}
 
 	label_buf_t label_buf;
 	if (!init_label_buf(&label_buf, &safe_gc, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count)) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Failed to initialze label buffer."));
 	}
 
 	if (!emit_instructions(output_file, &label_buf, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count, HAS_EXT_FLAG("-dbg"))) {
+		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Failed to emit instructions. Potentially unrecognized opcode."));
 	}
 	emit_final(output_file, robo_mode, source);
 
+	free_machine(&machine);
 	free_safe_gc(&safe_gc, 1);
 	fclose(output_file);
 
