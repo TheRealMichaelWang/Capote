@@ -195,9 +195,6 @@ static ffi_t ffi_table;
 
 //type signature declarations
 static uint16_t* type_table;
-static int16_t** type_extension_args;
-static uint8_t* type_extension_arg_count;
-static uint16_t type_count;
 
 static machine_type_sig_t* defined_signatures;
 static uint16_t defined_sig_count, alloced_sig_defs;
@@ -263,7 +260,6 @@ static int init_runtime(int type_table_size) {
 	trace_count = 0;
 	freed_heap_count = 0;
 	defined_sig_count = 0;
-	type_count = type_table_size;
 	reset_count = 0;
 
 	ESCAPE_ON_FAIL(heap_allocs = malloc((alloced_heap_allocs = FRAME_LIMIT) * sizeof(heap_alloc_t*)));
@@ -272,8 +268,6 @@ static int init_runtime(int type_table_size) {
 	ESCAPE_ON_FAIL(trace_frame_bounds = malloc(FRAME_LIMIT * sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(freed_heap_allocs = malloc((alloc_freed_heaps = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(type_table = calloc(type_table_size, sizeof(uint16_t)));
-	ESCAPE_ON_FAIL(type_extension_args = calloc(type_table_size, sizeof(uint16_t*)));
-	ESCAPE_ON_FAIL(type_extension_arg_count = calloc(type_table_size, sizeof(uint8_t)));
 	ESCAPE_ON_FAIL(defined_signatures = malloc((alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
 	ESCAPE_ON_FAIL(reset_stack = malloc((alloced_reset = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(install_stdlib());
@@ -339,17 +333,11 @@ static void free_runtime() {
 		free(freed_heap_allocs[i]);
 	for (uint_fast16_t i = 0; i < defined_sig_count; i++)
 		free_defined_signature(&defined_signatures[i]);
-	for (uint_fast16_t i = 0; i < type_count; i++) {
-		if (type_extension_args[i])
-			free(type_extension_args[i]);
-	}
 	free(heap_allocs);
 	free(heap_traces);
 	free(trace_frame_bounds);
 	free(freed_heap_allocs);
 	free(type_table);
-	free(type_extension_args);
-	free(type_extension_arg_count);
 	free(defined_signatures);
 	free(ffi_table.func_table);
 	free(reset_stack);
@@ -364,6 +352,41 @@ static machine_type_sig_t* new_type_sig() {
 	return &defined_signatures[defined_sig_count++];
 }
 
+//makes a copy of a type signature, given a prototype defined signature which may contain context dependent type parameters that may escape
+static int atomize_heap_type_sig(machine_type_sig_t prototype, machine_type_sig_t* output, int atom_typeargs) {
+	if (prototype.super_signature == 3 && atom_typeargs)
+		return atomize_heap_type_sig(defined_signatures[stack[prototype.sub_type_count + global_offset].long_int], output, 1);
+	else {
+		output->super_signature = prototype.super_signature;
+		if ((output->sub_type_count = prototype.sub_type_count) && prototype.super_signature != 3) {
+			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), SUPERFORTH_ERROR_MEMORY);
+			for (uint_fast8_t i = 0; i < output->sub_type_count; i++)
+				ESCAPE_ON_FAIL(atomize_heap_type_sig(prototype.sub_types[i], &output->sub_types[i], atom_typeargs));
+		}
+	}
+	return 1;
+}
+
+static int get_super_type(machine_type_sig_t* child_typeargs, machine_type_sig_t* output) {
+	if (output->super_signature == 3)
+		ESCAPE_ON_FAIL(atomize_heap_type_sig(child_typeargs[output->sub_type_count], output, 1))
+	else {
+		for (uint_fast8_t i = 0; i < output->sub_type_count; i++)
+			ESCAPE_ON_FAIL(get_super_type(child_typeargs, &output->sub_types[i]));
+	}
+	return 1;
+}
+
+static int is_super_type(uint16_t child_sig, uint16_t super_sig) {
+	while (type_table[child_sig - 10])
+	{
+		child_sig = defined_signatures[type_table[child_sig - 10] - 1].super_signature;
+		if (child_sig == super_sig)
+			return 1;
+	}
+	return 0;
+}
+
 static int type_signature_match(machine_type_sig_t match_signature, machine_type_sig_t parent_signature) {
 	if (parent_signature.super_signature == 2)
 		return 1;
@@ -374,64 +397,20 @@ static int type_signature_match(machine_type_sig_t match_signature, machine_type
 		parent_signature = defined_signatures[stack[parent_signature.sub_type_count + global_offset].long_int];
 
 	if (match_signature.super_signature != parent_signature.super_signature) {
-		uint16_t match_super_sig = match_signature.super_signature;
-
-		uint8_t match_sub_sig_count = match_signature.sub_type_count;
-		machine_type_sig_t* match_sub_sigs = malloc(match_sub_sig_count * sizeof(machine_type_sig_t));
-		PANIC_ON_FAIL(match_sub_sigs, SUPERFORTH_ERROR_MEMORY);
-		memcpy(match_sub_sigs, match_signature.sub_types, match_sub_sig_count * sizeof(machine_type_sig_t));
-
-		while (type_table[match_super_sig]) {
-			match_sub_sig_count = type_extension_arg_count[match_super_sig];
-			machine_type_sig_t* new_match_sub_sigs = malloc(match_sub_sig_count * sizeof(machine_type_sig_t));
-			PANIC_ON_FAIL(new_match_sub_sigs, SUPERFORTH_ERROR_MEMORY);
-			for (uint_fast8_t i = 0; i < match_sub_sig_count; i++) {
-				if (type_extension_args[match_super_sig][i] >= 0)
-					new_match_sub_sigs[i] = match_sub_sigs[type_extension_args[match_super_sig][i]];
-				else
-					new_match_sub_sigs[i] = defined_signatures[-(type_extension_args[match_super_sig][i] + 1)];
-			}
-			free(match_sub_sigs);
-			match_sub_sigs = new_match_sub_sigs;
-			match_super_sig = type_table[match_super_sig];
-
-			if (match_super_sig == parent_signature.super_signature) {
-				if (match_sub_sig_count != parent_signature.sub_type_count) {
-					free(match_sub_sigs);
-					return 0;
-				}
-				for (uint_fast8_t i = 0; i < match_sub_sig_count; i++) 
-					if (!type_signature_match(match_sub_sigs[i], parent_signature.sub_types[i])) {
-						free(match_sub_sigs);
-						return 0;
-					}
-
-				free(match_sub_sigs);
-				return 1;
-			}
+		if (is_super_type(match_signature.super_signature, parent_signature.super_signature)) {
+			machine_type_sig_t super_type;
+			ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[type_table[match_signature.super_signature - 10] - 1], &super_type, 0));
+			ESCAPE_ON_FAIL(get_super_type(match_signature.sub_types, &super_type));
+			int res = type_signature_match(super_type, parent_signature);
+			free_defined_signature(&super_type);
+			return res;
 		}
-		free(match_sub_sigs);
 		return 0;
 	}
 	ESCAPE_ON_FAIL(match_signature.sub_type_count == parent_signature.sub_type_count);
 	for (uint_fast8_t i = 0; i < parent_signature.sub_type_count; i++)
 		ESCAPE_ON_FAIL(type_signature_match(match_signature.sub_types[i], parent_signature.sub_types[i]));
 	return 1;
-}
-
-//makes a copy of a type signature, given a prototype defined signature which may contain context dependent type parameters that may escape
-static int atomize_heap_type_sig(machine_type_sig_t prototype, machine_type_sig_t* output) {
-	if (prototype.super_signature == 3)
-		return atomize_heap_type_sig(defined_signatures[stack[prototype.sub_type_count + global_offset].long_int], output);
-	else {
-		output->super_signature = prototype.super_signature;
-		if (output->sub_type_count = prototype.sub_type_count) {
-			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), SUPERFORTH_ERROR_MEMORY);
-			for (uint_fast8_t i = 0; i < output->sub_type_count; i++)
-				ESCAPE_ON_FAIL(atomize_heap_type_sig(prototype.sub_types[i], &output->sub_types[i]));
-		}
-		return 1;
-	}
 }
 
 //traces a heap allocation permanatley - supertacing keeps heap alive in memory till the end of program
@@ -695,6 +674,19 @@ static int std_sleep(machine_reg_t* in, machine_reg_t* out) {
 #undef milliseconds
 
 #endif // ROBOMODE
+	return 1;
+}
+
+static int std_realloc(machine_reg_t* in, machine_reg_t* out) {
+	heap_alloc_t* alloc = out->heap_alloc;
+
+	if (alloc->trace_mode == GC_TRACE_MODE_SOME)
+		PANIC(SUPERFORTH_ERROR_INTERNAL); //cannot realloc non array object
+
+	PANIC_ON_FAIL(alloc->registers = realloc(alloc->registers, alloc->limit + in->long_int), SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(alloc->init_stat = realloc(alloc->init_stat, alloc->limit + in->long_int), SUPERFORTH_ERROR_MEMORY);
+	memset(&alloc->init_stat[alloc->limit], 0, in->long_int * sizeof(int));
+
 	return 1;
 }
 

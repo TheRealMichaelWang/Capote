@@ -671,7 +671,7 @@ static int ast_postproc_value(ast_parser_t* ast_parser, ast_value_t* value, post
 
 			ESCAPE_ON_FAIL(ast_postproc_value(ast_parser, arg, typearg_traces, global_gc_stats, local_gc_stats, shared_globals, shared_locals, local_scope_size, POSTPROC_PARENT_IRRELEVANT, parent_proc, 0));
 
-			if((arg->type.type == TYPE_SUPER_RECORD && ast_parser->ast->record_protos[value->type.type_id]->do_gc) || 
+			if((arg->type.type == TYPE_SUPER_RECORD && ast_parser->ast->record_protos[arg->type.type_id]->do_gc) || 
 				(arg->type.type == TYPE_SUPER_ARRAY && 
 					(IS_REF_TYPE(arg->type.sub_types[0]) || arg->type.sub_types[0].type == TYPE_TYPEARG) )) {
 

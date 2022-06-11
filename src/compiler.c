@@ -616,19 +616,8 @@ static int compile_code_block(compiler_t* compiler, ast_code_block_t code_block,
 		case AST_STATEMENT_RECORD_PROTO:
 			if (current_statement->data.record_proto->base_record) {
 				ast_record_proto_t* record = current_statement->data.record_proto;
-				compiler->target_machine->type_table[record->id + TYPE_SUPER_RECORD] = compiler->ast->record_protos[record->base_record->type_id]->id + TYPE_SUPER_RECORD;
-				
-				PANIC_ON_FAIL(compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD] = safe_malloc(compiler->safe_gc, record->base_record->sub_type_count * sizeof(int16_t)), compiler, ERROR_MEMORY);
-				compiler->target_machine->type_extension_arg_count[record->id + TYPE_SUPER_RECORD] = record->base_record->sub_type_count;
-				for (uint_fast8_t i = 0; i < record->base_record->sub_type_count; i++) {
-					if (record->base_record->sub_types[i].type == TYPE_TYPEARG)
-						compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD][i] = record->base_record->sub_types[i].type_id;
-					else {
-						uint16_t sig_id = compiler->target_machine->defined_sig_count;
-						ESCAPE_ON_FAIL(compiler_define_typesig(compiler, proc, record->base_record->sub_types[i]));
-						compiler->target_machine->type_extension_args[record->id + TYPE_SUPER_RECORD][i] = -1 - sig_id;
-					}
-				}
+				compiler->target_machine->type_table[record->id] = compiler->target_machine->defined_sig_count + 1;
+				ESCAPE_ON_FAIL(compiler_define_typesig(compiler, NULL, *record->base_record));
 			}
 			break;
 		}
@@ -648,7 +637,7 @@ int compile(compiler_t* compiler, safe_gc_t* safe_gc, machine_t* target_machine,
 	PANIC_ON_FAIL(compiler->proc_call_offsets = safe_malloc(safe_gc, ast->proc_call_count * sizeof(uint16_t)), compiler, ERROR_MEMORY);
 	PANIC_ON_FAIL(compiler->proc_generic_regs = safe_malloc(safe_gc, ast->proc_count * sizeof(compiler_reg_t*)), compiler, ERROR_MEMORY);
 
-	PANIC_ON_FAIL(init_machine(target_machine, UINT16_MAX / 8, 1000, TYPE_SUPER_RECORD + ast->record_count), compiler, ERROR_MEMORY);
+	PANIC_ON_FAIL(init_machine(target_machine, UINT16_MAX / 8, 1000, ast->record_count), compiler, ERROR_MEMORY);
 
 	allocate_code_block_regs(compiler, ast->exec_block, 0);
 
@@ -673,9 +662,13 @@ static int compile_type_to_machine(machine_type_sig_t* out_sig, typecheck_type_t
 	out_sig->sub_type_count = 0;
 	if (type.type == TYPE_TYPEARG) {
 		out_sig->super_signature = TYPE_TYPEARG;
-		compiler_reg_t info_reg = TYPEARG_INFO_REG(type);
-		PANIC_ON_FAIL(info_reg.offset, compiler, ERROR_INTERNAL)
-		out_sig->sub_type_count = info_reg.reg;
+		if (proc) {
+			compiler_reg_t info_reg = TYPEARG_INFO_REG(type);
+			PANIC_ON_FAIL(info_reg.offset, compiler, ERROR_INTERNAL)
+				out_sig->sub_type_count = info_reg.reg;
+		}
+		else
+			out_sig->sub_type_count = type.type_id;
 		return 1;
 	}
 	else if (type.type == TYPE_ANY) {

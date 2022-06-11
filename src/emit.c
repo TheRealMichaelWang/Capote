@@ -41,30 +41,23 @@ static int emit_type_sig(FILE* file_out, const char* parent_sig, machine_type_si
 	return 1;
 }
 
-static int emit_type_info(FILE* file_out, machine_t* machine) {
+static int emit_type_info(FILE* file_out, ast_t* ast, machine_t* machine) {
 	fputs("\n//Type Signature Declarations\n\tmachine_type_sig_t* sig;\n", file_out);
 	for (uint_fast16_t i = 0; i < machine->defined_sig_count; i++) {
 		fputs("\tESCAPE_ON_FAIL(sig = new_type_sig());\n\t", file_out);
 		ESCAPE_ON_FAIL(emit_type_sig(file_out, "sig->", machine->defined_signatures[i]));
 	}
 	fputs("\n\t//Type relationships\n", file_out);
-	for (uint16_t i = 0; i < machine->type_count; i++)
-		if (machine->type_table[i]) {
+	for (uint16_t i = 0; i < ast->record_count; i++)
+		if(machine->type_table[i])
 			fprintf(file_out, "\ttype_table[%"PRIu16"] = %"PRIu16";\n", i, machine->type_table[i]);
-
-			if (machine->type_extension_arg_count[i]) {
-				fprintf(file_out, "\tPANIC_ON_FAIL(type_extension_args[%"PRIu16"] = malloc((type_extension_arg_count[%"PRIu16"] = %"PRIu8") * sizeof(int16_t)), SUPERFORTH_ERROR_MEMORY);\n", i, i, machine->type_extension_arg_count[i]);
-				for (uint8_t j = 0; j < machine->type_extension_arg_count[i]; j++)
-					fprintf(file_out, "\ttype_extension_args[%"PRIu16"][%"PRIu8"] = %"PRIi16";\n", i, j, machine->type_extension_args[i][j]);
-			}
-		}
 	return 1;
 }
 
 int emit_init(FILE* file_out, ast_t* ast, machine_t* machine) {
 	fputs("\n//initializes everything\nstatic int init_all() {\n", file_out);
-	fprintf(file_out, "\tESCAPE_ON_FAIL(init_runtime(%i));\n\tinit_constants();\n", TYPE_SUPER_RECORD + ast->record_count);
-	ESCAPE_ON_FAIL(emit_type_info(file_out, machine));
+	fprintf(file_out, "\tESCAPE_ON_FAIL(init_runtime(%i));\n\tinit_constants();\n", ast->record_count);
+	ESCAPE_ON_FAIL(emit_type_info(file_out, ast, machine));
 
 	fputs("\treturn 1;\n}\n", file_out);
 	return 1;
@@ -120,7 +113,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			if (instructions[i].regs[2].reg) { //atomotize signature
 				fprintf(file_out, ".long_int = defined_sig_count; sig=new_type_sig(); PANIC_ON_FAIL(sig, SUPERFORTH_ERROR_MEMORY); "
-					"ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig));", instructions[i].regs[1].reg);
+					"ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig, 1));", instructions[i].regs[1].reg);
 			}
 			else {//do not atomotize signature
 				fprintf(file_out, ".long_int = %"PRIu16";", instructions[i].regs[1].reg);
@@ -460,7 +453,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_CONFIG_TYPESIG:
 			if (instructions[i].regs[2].reg) {
 				fputs("PANIC_ON_FAIL(sig = malloc(sizeof(machine_type_sig_t)), SUPERFORTH_ERROR_MEMORY);", file_out);
-				fprintf(file_out, "ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig));", instructions[i].regs[1].reg);
+				fprintf(file_out, "ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig, 1));", instructions[i].regs[1].reg);
 				emit_reg(file_out, instructions[i].regs[0], 0);
 				fputs(".heap_alloc->type_sig = sig;", file_out);
 			}

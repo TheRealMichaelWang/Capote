@@ -223,7 +223,50 @@ int ast_record_sub_prop_type(ast_parser_t* ast_parser, typecheck_type_t record_t
 	PANIC(ast_parser, ERROR_UNDECLARED);
 }
 
-int substitute_value_types(ast_parser_t* ast_parser, ast_value_t input_val, typecheck_type_t* input_typeargs, ast_value_t* output_val) {
+static int code_paths_return(ast_code_block_t code_block, int is_while_true, int* cannot_return) {
+	for (uint_fast32_t i = 0; i < code_block.instruction_count; i++)
+		switch (code_block.instructions[i].type)
+		{
+		case AST_STATEMENT_BREAK:
+			if (is_while_true) {
+				*cannot_return = 1;
+				return 0;
+			}
+			break;
+		case AST_STATEMENT_RETURN:
+		case AST_STATEMENT_RETURN_VALUE:
+		case AST_STATEMENT_ABORT:
+			return 1;
+		case AST_STATEMENT_COND: {
+			ast_cond_t* cond = code_block.instructions[i].data.conditional;
+			if (cond->next_if_true) { //cond is a while loop
+				int cant_ret_flag = 0;
+				if (cond->condition->is_truey && code_paths_return(cond->exec_block, 1, &cant_ret_flag) && !cant_ret_flag)
+					return 1;
+			}
+			else { //cond is an if else chain
+				ast_cond_t* last_cond;
+				int temp_cant_ret = 0;
+				for (; cond; cond = cond->next_if_false) {
+					if (!code_paths_return(cond->exec_block, is_while_true, &temp_cant_ret))
+						goto escape_cond_path;
+					last_cond = cond;
+				}
+				if (!last_cond->condition) //an else has been detected
+					return 1;
+			escape_cond_path:
+				if (is_while_true && temp_cant_ret) {
+					*cannot_return = 1;
+					return 0;
+				}
+			}
+			break;
+		}
+		}
+	return is_while_true;
+}
+
+static int substitute_value_types(ast_parser_t* ast_parser, ast_value_t input_val, typecheck_type_t* input_typeargs, ast_value_t* output_val) {
 	*output_val = input_val;
 	TYPE_COPY(&output_val->type, input_val.type);
 	ESCAPE_ON_FAIL(typeargs_substitute(ast_parser->safe_gc, input_typeargs, &output_val->type));
@@ -903,11 +946,14 @@ static int parse_code_block(ast_parser_t* ast_parser, ast_code_block_t* code_blo
 }
 
 static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_type_t* type) {
+	value->is_falsey = value->is_truey = 0;
 	switch (LAST_TOK.type) {
-	case TOK_NUMERICAL:
-	case TOK_CHAR:
 	case TOK_TRUE:
 	case TOK_FALSE:
+		value->is_truey = LAST_TOK.type == TOK_TRUE;
+		value->is_falsey = LAST_TOK.type == TOK_FALSE;
+	case TOK_NUMERICAL:
+	case TOK_CHAR:
 		ESCAPE_ON_FAIL(value->data.primitive = parse_prim_value(ast_parser));
 		value->value_type = AST_VALUE_PRIMITIVE;
 		value->type.type = TYPE_PRIMITIVE_BOOL + value->data.primitive->type - AST_PRIMITIVE_BOOL;
@@ -1236,12 +1282,21 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			}
 		}
 		else
-			ESCAPE_ON_FAIL(parse_code_block(ast_parser, &value->data.procedure->exec_block, 1, 0))
+			ESCAPE_ON_FAIL(parse_code_block(ast_parser, &value->data.procedure->exec_block, 1, 0));
 
 		value->data.procedure->scope_size = CURRENT_FRAME.max_scoped_locals;
 		value->data.procedure->id = ast_parser->ast->proc_count++;
 		if (value->data.procedure->return_type->type == TYPE_AUTO)
 			value->data.procedure->return_type->type = TYPE_NOTHING;
+
+		if (!code_paths_return(value->data.procedure->exec_block, 0, NULL)) {
+			if (value->data.procedure->return_type->type == TYPE_NOTHING) { //add implicit return
+				ast_statement_t* return_statement = ast_code_block_append(ast_parser, &value->data.procedure->exec_block);
+				return_statement->type = AST_STATEMENT_RETURN;
+			}
+			else
+				PANIC(ast_parser, ERROR_UNRETURNED_FUNCTION);
+		}
 
 		ESCAPE_ON_FAIL(ast_parser_close_frame(ast_parser));
 		break;
@@ -1420,6 +1475,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			READ_TOK;
 		}
 		value->id = ast_parser->ast->value_count++;
+		value->is_falsey = value->is_truey = 0;
 	}
 	PANIC_ON_FAIL(TYPE_COMP(type, value->type), ast_parser, ERROR_UNEXPECTED_TYPE);
 	return 1;
@@ -1472,6 +1528,7 @@ static int parse_expression(ast_parser_t* ast_parser, ast_value_t* value, typech
 			PANIC(ast_parser, ERROR_DIVIDE_BY_ZERO);
 
 		value->id = ast_parser->ast->value_count++;
+		value->is_falsey = value->is_truey = 0;
 		value->data.binary_op->lhs = lhs;
 		lhs = *value;
 	}

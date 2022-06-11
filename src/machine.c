@@ -4,12 +4,9 @@
 
 int init_machine(machine_t* machine, uint16_t stack_size, uint16_t frame_limit, uint16_t type_count) {
 	machine->defined_sig_count = 0;
-	machine->type_count = type_count;
 	ESCAPE_ON_FAIL(machine->stack = malloc(stack_size * sizeof(machine_reg_t)));
 	ESCAPE_ON_FAIL(machine->defined_signatures = malloc((machine->alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
 	ESCAPE_ON_FAIL(machine->type_table = calloc(type_count, sizeof(uint16_t)));
-	ESCAPE_ON_FAIL(machine->type_extension_args = calloc(type_count, sizeof(uint16_t*)));
-	ESCAPE_ON_FAIL(machine->type_extension_arg_count = calloc(type_count, sizeof(uint8_t)));
 	return 1;
 }
 
@@ -17,8 +14,6 @@ void free_machine(machine_t* machine) {
 	free(machine->stack);
 	free(machine->defined_signatures);
 	free(machine->type_table);
-	free(machine->type_extension_args);
-	free(machine->type_extension_arg_count);
 }
 
 machine_type_sig_t* new_type_sig(machine_t* machine) {

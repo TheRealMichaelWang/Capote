@@ -31,9 +31,6 @@ typedef struct machine {
 	machine_reg_t* stack;
 
 	uint16_t* type_table;
-	int16_t** type_extension_args;
-	uint8_t* type_extension_arg_count;
-	uint16_t type_count;
 
 	machine_type_sig_t* defined_signatures;
 	uint16_t defined_sig_count, alloced_sig_defs;

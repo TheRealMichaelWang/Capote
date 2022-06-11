@@ -8,4 +8,9 @@ C_SOURCES := $(notdir $(wildcard src/*.c))
 all:
 	@mkdir -p bin
 	$(foreach C_SOURCE, $(C_SOURCES), gcc src/$(C_SOURCE) -o bin/$(C_SOURCE).o -c -Ofast$(newline))
-	gcc -o capote $(wildcard bin/*.c.o) -Ofast -lm
+	gcc -o capote $(wildcard bin/*.c.o) -Ofast -lm -ldl
+
+dbg:
+	@mkdir -p bin
+	$(foreach C_SOURCE, $(C_SOURCES), gcc src/$(C_SOURCE) -o bin/$(C_SOURCE).o -c -ggdb$(newline))
+	gcc -o capote $(wildcard bin/*.c.o) -lm -ldl -ggdb

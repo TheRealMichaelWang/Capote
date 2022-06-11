@@ -113,6 +113,8 @@ typedef struct ast_value {
 		ast_foreign_call_t* foreign;
 	} data;
 
+	int is_falsey, is_truey;
+
 	uint32_t id;
 
 	postproc_gc_status_t gc_status;
