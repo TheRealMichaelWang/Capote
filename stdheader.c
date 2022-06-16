@@ -10,7 +10,7 @@
 #else
 
 //sleep related imports
-#ifdef WIN32
+#ifdef _WIN32 || WIN32
 #include <windows.h>
 #elif _POSIX_C_SOURCE >= 199309L
 #include <time.h>   // for nanosleep
@@ -659,7 +659,7 @@ static int std_sleep(machine_reg_t* in, machine_reg_t* out) {
 #else
 
 #define milliseconds in->long_int
-#ifdef WIN32
+#ifdef _WIN32 || WIN32
 	Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
 	struct timespec ts;
@@ -683,9 +683,10 @@ static int std_realloc(machine_reg_t* in, machine_reg_t* out) {
 	if (alloc->trace_mode == GC_TRACE_MODE_SOME)
 		PANIC(SUPERFORTH_ERROR_INTERNAL); //cannot realloc non array object
 
-	PANIC_ON_FAIL(alloc->registers = realloc(alloc->registers, alloc->limit + in->long_int), SUPERFORTH_ERROR_MEMORY);
-	PANIC_ON_FAIL(alloc->init_stat = realloc(alloc->init_stat, alloc->limit + in->long_int), SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(alloc->registers = realloc(alloc->registers, (alloc->limit + in->long_int) * sizeof(machine_reg_t)), SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(alloc->init_stat = realloc(alloc->init_stat, (alloc->limit + in->long_int) * sizeof(int)), SUPERFORTH_ERROR_MEMORY);
 	memset(&alloc->init_stat[alloc->limit], 0, in->long_int * sizeof(int));
+	alloc->limit += in->long_int;
 
 	return 1;
 }
@@ -821,18 +822,19 @@ static int install_stdlib() {
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_ctoi));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_time));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_sleep)); //17
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, std_realloc)); //18
 
 	//robot related foreign functions
 #ifdef ROBOMODE
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_opmode)); //18
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_opmode)); //19
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_log_foreign));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_select_port)); //20
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_select_port)); //21
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_move_motor));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_position));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_gearset)); //22
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_gearset)); //23
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_encoding));
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_config_motor_reversed));
-	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_rpm)); //25
+	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_get_rpm)); //26
 	ESCAPE_ON_FAIL(ffi_include_func(&ffi_table, robot_set_zero_encoder));
 #endif // ROBOMODE
 	return 1;
