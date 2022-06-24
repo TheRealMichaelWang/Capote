@@ -29,19 +29,20 @@ int main(int argc, const char** argv) {
 	int current_arg = 0;
 	const char* working_dir = READ_ARG;
 
-	puts("Capote SuperForth GCC/Pros Transpiler\n" 
+	puts("Capote Cish GCC/Pros Transpiler\n" 
 			"Written by Michael Wang 2022\n\n"
 			
-			"This is an experimental program, and may not support the latest SuperForth features. Expect any version signifigantly above or below SuperForth v1.0 to not compile.\n"
+			"This is an experimental program, and may not support the latest Cish features. Expect any version signifigantly above or below Cish v1.0 to not compile.\n"
 			"This program was created exclusivley for Husky Robotics. Do not distribute.\n");
 
 	EXPECT_FLAG("-s");
 	const char* source = READ_ARG;
 	if (strcmp(get_filepath_ext(source), "txt") && strcmp(get_filepath_ext(source), "sf"))
-		ABORT(("Unexpected source file extension %s. Expect a SuperForth source(.txt or .sf).", get_filepath_ext(source)));
+		ABORT(("Unexpected source file extension %s. Expect a Cish source(.txt or .sf).", get_filepath_ext(source)));
 	
 	safe_gc_t safe_gc;
-	if (!init_safe_gc(&safe_gc))
+	dbg_table_t dbg_table;
+	if (!init_safe_gc(&safe_gc) || !init_debug_table(&dbg_table, &safe_gc))
 		ABORT(("Error initializing safe-gc."));
 
 	ast_parser_t parser;
@@ -51,7 +52,7 @@ int main(int argc, const char** argv) {
 	}
 
 	ast_t ast;
-	if (!init_ast(&ast, &parser)) {
+	if (!init_ast(&ast, &parser, &dbg_table)) {
 		print_error_trace(parser.multi_scanner);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Syntax error(%s).\n", get_err_msg(parser.last_err)));

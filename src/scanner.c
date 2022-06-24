@@ -139,7 +139,7 @@ int scanner_scan_tok(scanner_t* scanner) {
 			RETURN(TOK_ABSTRACT);
 		case 210712410159:
 			RETURN(TOK_FINAL);
-		case 249885278712973151: 
+		case 249885278712973151:
 			RETURN(TOK_DEFERINIT);
 		case 7572685928825474: //mustinit is no longer a keyword
 			PANIC(scanner, ERROR_INTERNAL);
@@ -148,6 +148,8 @@ int scanner_scan_tok(scanner_t* scanner) {
 			RETURN(TOK_IS_TYPE);
 		case 15040638317685008948:
 			RETURN(TOK_DYNAMIC_CAST);
+		case 7572281064105023:
+			RETURN(TOK_DECLTYPE);
 		case 193504585: //rem
 			do {
 				scanner_read_char(scanner);
@@ -162,7 +164,7 @@ int scanner_scan_tok(scanner_t* scanner) {
 		do {
 			scanner_read_char(scanner);
 			scanner->last_tok.length++;
-			
+
 			if (scanner->last_char == '.')
 				type_flag = 1;
 			else if (scanner->last_char == 'f' || scanner->last_char == 'h') {
@@ -191,7 +193,7 @@ int scanner_scan_tok(scanner_t* scanner) {
 		scanner->last_tok.type = TOK_CHAR;
 		scanner->last_tok.str++;
 		uint32_t old_pos = scanner->position;
-		if(!scanner_scan_char(scanner) || !scanner_peek_char(scanner))
+		if (!scanner_scan_char(scanner) || !scanner_peek_char(scanner))
 			PANIC(scanner, ERROR_UNEXPECTED_TOK);
 		scanner->last_tok.length = scanner->position - old_pos;
 		if (!scanner_read_char(scanner) || scanner->last_char != '\'')
