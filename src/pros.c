@@ -6,7 +6,7 @@ void pros_emit_info(FILE* file_out, const char* input_file) {
 	fputs("\n}", file_out);
 }
 
-void pros_emit_events(FILE* file_out) {
+void pros_emit_events(FILE* file_out, int debug) {
 	static const char* event_names[] = {
 		"initialize",
 		"autonomous",
@@ -48,19 +48,36 @@ void pros_emit_events(FILE* file_out) {
 		}
 		else if (i == 1 || i == 4) { //generate run code
 			fprintf(file_out, "\trobot_log_cstr(\"%s\");\n", log_msgs[i - 1]);
-			fputs(
-				"\twhile(!inited) {} //wait for initialze() to finish\n"
-				"\tif(ran) {\n"
-				"\t\trobot_log_cstr(\"Cannot start program, already ran.\");\n"
-				"\t\treturn;\n"
-				"\t}\n"
-				"\tran = 1;\n"
-				"\tif(!run()) {\n"
-				"\t\trobot_log_cstr(\"Runtime Error:\");\n"
-				"\t\trobot_log_cstr(error_names[last_err]);\n\t}\n"
-				"\tfree_runtime();\n",
-				file_out
-			);
+			if(debug)
+				fputs(
+					"\twhile(!inited) {} //wait for initialze() to finish\n"
+					"\tif(ran) {\n"
+					"\t\trobot_log_cstr(\"Cannot start program, already ran.\");\n"
+					"\t\treturn;\n"
+					"\t}\n"
+					"\tran = 1;\n"
+					"\tif(!run()) {\n"
+					"\t\tprint_back_trace();\n"
+					"\t\trobot_log_cstr(\"Runtime Error:\");\n"
+					"\t\trobot_log_cstr(error_names[last_err]);\n\t}\n"
+					"\tfree_runtime();\n",
+					file_out
+				);
+			else
+				fputs(
+					"\twhile(!inited) {} //wait for initialze() to finish\n"
+					"\tif(ran) {\n"
+					"\t\trobot_log_cstr(\"Cannot start program, already ran.\");\n"
+					"\t\treturn;\n"
+					"\t}\n"
+					"\tran = 1;\n"
+					"\tif(!run()) {\n"
+
+					"\t\trobot_log_cstr(\"Runtime Error:\");\n"
+					"\t\trobot_log_cstr(error_names[last_err]);\n\t}\n"
+					"\tfree_runtime();\n",
+					file_out
+				);
 		}
 		fputc('}', file_out);
 	}

@@ -44,7 +44,7 @@ typedef enum error {
 
 typedef struct safe_gc {
 	void** entries;
-	void*** availible_entries;
+	int* availible_entries;
 
 	void** transfer_entries;
 
