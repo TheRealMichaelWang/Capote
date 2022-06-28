@@ -591,7 +591,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 void emit_final(FILE* file_out, int robo_mode, int debug, const char* input_file) {
 	if (robo_mode) {
 		pros_emit_info(file_out, input_file);
-		pros_emit_events(file_out);
+		pros_emit_events(file_out, debug);
 	}
 	else {
 		if (debug) 
