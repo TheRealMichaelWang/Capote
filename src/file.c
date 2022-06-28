@@ -29,3 +29,27 @@ char* file_read_source(const char* path) {
 
 	return buffer;
 }
+
+char* get_row_str(const char* text, int row) {
+	--row;
+
+	while (row && *text) {
+		if (*text == '\n')
+			--row;
+		++text;
+	}
+
+	const char* begin = text;
+
+	while (*text && (*text != '\n' && *text != '\r'))
+		++text;
+
+	if (begin == text)
+		return NULL;
+
+	char* buffer = malloc((text - begin) + 1);
+	ESCAPE_ON_FAIL(buffer);
+	memcpy(buffer, begin, text - begin);
+	buffer[text - begin] = 0;
+	return buffer;
+}

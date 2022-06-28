@@ -1389,7 +1389,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 	int has_incremented = 0;
 	while (LAST_TOK.type == TOK_OPEN_BRACKET || LAST_TOK.type == TOK_OPEN_PAREN || LAST_TOK.type == TOK_IS_TYPE || LAST_TOK.type == TOK_INCREMENT || LAST_TOK.type == TOK_DECREMENT || LAST_TOK.type == TOK_PERIOD || (LAST_TOK.type == TOK_LESS && value->type.type == TYPE_SUPER_PROC)) {
 		uint32_t src_loc_id;
-		ESCAPE_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &src_loc_id));
+		PANIC_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &src_loc_id), ast_parser, ERROR_MEMORY);
 
 		if (LAST_TOK.type == TOK_IS_TYPE) {
 			READ_TOK;
@@ -1621,6 +1621,12 @@ int init_ast(ast_t* ast, ast_parser_t* ast_parser, dbg_table_t* dbg_table) {
 	PANIC_ON_FAIL(ast->primitives = safe_malloc(ast_parser->safe_gc, (ast->allocated_constants = 10) * sizeof(ast_primitive_t*)), ast_parser, ERROR_MEMORY);
 
 	READ_TOK;
+	uint32_t first_src_id;
+	PANIC_ON_FAIL(debug_table_add_loc(dbg_table, ast_parser->multi_scanner, &first_src_id), ast_parser, ERROR_MEMORY);
+	PANIC_ON_FAIL(!first_src_id, ast_parser, ERROR_INTERNAL);
+	dbg_table->src_locations[0].min_ip = 0;
+	dbg_table->src_locations[0].max_ip = UINT64_MAX - 1;
+
 	ESCAPE_ON_FAIL(ast_parser_new_frame(ast_parser, NULL, 0));
 	ESCAPE_ON_FAIL(parse_code_block(ast_parser, &ast->exec_block, 0, 0));
 	ast_parser->top_level_local_count = CURRENT_FRAME.max_scoped_locals;
