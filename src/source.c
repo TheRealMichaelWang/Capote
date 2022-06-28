@@ -67,7 +67,7 @@ int main(int argc, const char** argv) {
 
 	EXPECT_FLAG("-o");
 	const char* output_path = READ_ARG;
-	if (!strcmp(get_filepath_ext(output_path), "txt") || !strcmp(get_filepath_ext(output_path), "sf")) {
+	if (!strcmp(get_filepath_ext(output_path), "txt") || !strcmp(get_filepath_ext(output_path), "sf") || !strcmp(get_filepath_ext(output_path), "csh")) {
 		free_machine(&machine);
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Stopped compilation: Potentially unwanted source file override.\n"
@@ -120,7 +120,7 @@ int main(int argc, const char** argv) {
 		free_safe_gc(&safe_gc, 1);
 		ABORT(("Failed to emit instructions. Potentially unrecognized opcode."));
 	}
-	emit_final(output_file, robo_mode, source);
+	emit_final(output_file, robo_mode, debug, source);
 
 	free_machine(&machine);
 	free_safe_gc(&safe_gc, 1);
