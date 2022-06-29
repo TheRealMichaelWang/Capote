@@ -39,22 +39,20 @@ int scanner_scan_char(scanner_t* scanner) {
 		scanner_read_char(scanner);
 		switch (scanner->last_char)
 		{
-		case 'b':
-			RETURN('\b');
-		case 'e':
-			RETURN('\e');
-		case 'n':
-			RETURN('\n');
-		case 'r':
-			RETURN('\r');
-		case 't':
-			RETURN('\t');
+		case 'a': RETURN('\a');
+		case 'b': RETURN('\b');
+		case 'e': RETURN('\e');
+		case 'f': RETURN('\f');
+		case 'n': RETURN('\n');
+		case 'r': RETURN('\r');
+		case 't': RETURN('\t');
+		case 'v': RETURN('\v');
 		case '\\':
-			RETURN('\\');
+		case '\'':
 		case '\"':
-			RETURN('\"');
-		case '0':
-			RETURN(0);
+		case '?':
+			RETURN(scanner->last_char);
+		case '0': RETURN(0);
 		default:
 			PANIC(scanner, ERROR_UNEXPECTED_TOK);
 		}
