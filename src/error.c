@@ -3,11 +3,12 @@
 
 int init_safe_gc(safe_gc_t* safe_gc) {
 	ESCAPE_ON_FAIL(safe_gc->entries = malloc((safe_gc->alloced_entries = 25) * sizeof(void*)));
-	ESCAPE_ON_FAIL(safe_gc->availible_entries = malloc((safe_gc->alloced_availible_entries = 5) * sizeof(int)));
+	ESCAPE_ON_FAIL(safe_gc->availible_entries = malloc((safe_gc->alloced_availible_entries = 5) * sizeof(void**)));
 	ESCAPE_ON_FAIL(safe_gc->transfer_entries = malloc((safe_gc->alloced_transfer_entries = 5) * sizeof(void*)));
 	safe_gc->entry_count = 0;
 	safe_gc->avaible_entry_count = 0;
 	safe_gc->transfer_entry_count = 0;
+	return 1;
 }
 
 void free_safe_gc(safe_gc_t* safe_gc, int free_transfers) {
