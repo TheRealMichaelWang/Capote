@@ -1,0 +1,5 @@
+proc randirange(int start, int stop) =>
+	(foreign[10] % (stop - start)) + stop;
+
+proc randbool() =>
+	(foreign[10] % 2) == 0;
