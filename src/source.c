@@ -37,8 +37,8 @@ int main(int argc, const char** argv) {
 
 	EXPECT_FLAG("-s");
 	const char* source = READ_ARG;
-	if (strcmp(get_filepath_ext(source), "txt") && strcmp(get_filepath_ext(source), "sf"))
-		ABORT(("Unexpected source file extension %s. Expect a Cish source(.txt or .sf).", get_filepath_ext(source)));
+	if (strcmp(get_filepath_ext(source), "txt") && strcmp(get_filepath_ext(source), "csh") && strcmp(get_filepath_ext(source), "sf"))
+		ABORT(("Unexpected source file extension %s. Expect a Cish source(.txt or .csh).", get_filepath_ext(source)));
 	
 	safe_gc_t safe_gc;
 	dbg_table_t dbg_table;
