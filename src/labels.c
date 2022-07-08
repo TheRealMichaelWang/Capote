@@ -33,6 +33,7 @@ int init_label_buf(label_buf_t* label_buf, safe_gc_t* safe_gc, compiler_ins_t* c
 			LABEL_IP(compiler_ins[i].regs[0].reg);
 			break;
 		case COMPILER_OP_CODE_LABEL:
+			label_buf->get_dbg_src_loc[src_loc_id] = 1;
 		case COMPILER_OP_CODE_JUMP_CHECK:
 			LABEL_IP(compiler_ins[i].regs[1].reg);
 			break;

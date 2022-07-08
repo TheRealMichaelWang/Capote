@@ -141,7 +141,10 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			emit_reg(file_out, instructions[i].regs[1], 1);
 			fputc(',', file_out);
 			emit_reg(file_out, instructions[i].regs[2], 1);
-			fputs(")) { last_err = last_err == CISH_ERROR_NONE ? CISH_ERROR_FOREIGN : last_err; return 0;}", file_out);
+			if(dbg)
+				fprintf(file_out, ")) { last_err = last_err == CISH_ERROR_NONE ? CISH_ERROR_FOREIGN : last_err; last_src_loc = %"PRIu64"; return 0;}", src_loc_id);
+			else
+				fputs(")) { last_err = last_err == CISH_ERROR_NONE ? CISH_ERROR_FOREIGN : last_err; return 0;}", file_out);
 			break;
 		case COMPILER_OP_CODE_MOVE:
 			emit_reg(file_out, instructions[i].regs[0], 0);
@@ -246,7 +249,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fprintf(file_out, "PANIC_ON_FAIL(scratch_heap->init_stat[%"PRIu16"], CISH_ERROR_READ_UNINIT, %"PRIu64"); ", instructions[i].regs[2].reg, src_loc_id);
 
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fprintf(file_out, " = scratch_heap->registers[%"PRIu16"];", instructions[i].regs[1].reg);
+			fprintf(file_out, " = scratch_heap->registers[%"PRIu16"];", instructions[i].regs[2].reg);
 			break;
 		case COMPILER_OP_CODE_STORE_ALLOC:
 			//set scratchpads
