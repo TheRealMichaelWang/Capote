@@ -1,4 +1,4 @@
-//SUPERFORTH
+//CISH
 //Written by Michael Wang, 2020-22
 
 //Emitted c standard header. This will generally have the properties of machine.h
@@ -10,7 +10,7 @@
 #else
 
 //sleep related imports
-#ifdef _WIN32 || WIN32
+#ifdef _WIN32
 #include <windows.h>
 #elif _POSIX_C_SOURCE >= 199309L
 #include <time.h>   // for nanosleep
@@ -59,48 +59,60 @@ static int ffi_include_func(ffi_t* ffi_table, foreign_func func) {
 }
 
 /*
-* SuperForth Runtime
+* Cish Runtime
 */
 
 #define FRAME_LIMIT 1000 //call frame limit
 
-typedef enum error {
-	SUPERFORTH_ERROR_NONE,
-	SUPERFORTH_ERROR_MEMORY,
-	SUPERFORTH_ERROR_INTERNAL,
+#ifdef CISH_DEBUG
+
+typedef struct cish_src_loc {
+	int row;
+	int col;
+
+	const char* file_name;
+	const char* line;
+} src_loc_t;
+
+#endif // CISH_DEBUG
+
+typedef enum cish_error {
+	CISH_ERROR_NONE,
+	CISH_ERROR_MEMORY,
+	CISH_ERROR_INTERNAL,
 
 	//syntax errors
-	SUPERFORTH_ERROR_UNEXPECTED_TOK,
+	CISH_ERROR_UNEXPECTED_TOK,
 
-	SUPERFORTH_ERROR_READONLY,
-	SUPERFORTH_ERROR_TYPE_NOT_ALLOWED,
+	CISH_ERROR_READONLY,
+	CISH_ERROR_TYPE_NOT_ALLOWED,
 
-	SUPERFORTH_ERROR_UNDECLARED,
-	SUPERFORTH_ERROR_REDECLARATION,
+	CISH_ERROR_UNDECLARED,
+	CISH_ERROR_REDECLARATION,
 
-	SUPERFORTH_ERROR_UNEXPECTED_TYPE,
-	SUPERFORTH_ERROR_UNEXPECTED_ARGUMENT_SIZE,
+	CISH_ERROR_UNEXPECTED_TYPE,
+	CISH_ERROR_UNEXPECTED_ARGUMENT_SIZE,
 
-	SUPERFORTH_ERROR_CANNOT_RETURN,
-	SUPERFORTH_ERROR_CANNOT_CONTINUE,
-	SUPERFORTH_ERROR_CANNOT_BREAK,
-	SUPERFORTH_ERROR_CANNOT_EXTEND,
-	SUPERFORTH_ERROR_CANNOT_INIT,
+	CISH_ERROR_CANNOT_RETURN,
+	CISH_ERROR_CANNOT_CONTINUE,
+	CISH_ERROR_CANNOT_BREAK,
+	CISH_ERROR_CANNOT_EXTEND,
+	CISH_ERROR_CANNOT_INIT,
 
 	//virtual-machine errors
-	SUPERFORTH_ERROR_INDEX_OUT_OF_RANGE,
-	SUPERFORTH_ERROR_DIVIDE_BY_ZERO,
-	SUPERFORTH_ERROR_STACK_OVERFLOW,
-	SUPERFORTH_ERROR_READ_UNINIT,
+	CISH_ERROR_INDEX_OUT_OF_RANGE,
+	CISH_ERROR_DIVIDE_BY_ZERO,
+	CISH_ERROR_STACK_OVERFLOW,
+	CISH_ERROR_READ_UNINIT,
 
-	SUPERFORTH_ERROR_UNRETURNED_FUNCTION,
+	CISH_ERROR_UNRETURNED_FUNCTION,
 	
-	SUPERFORTH_ERROR_ABORT,
-	SUPERFORTH_ERROR_FOREIGN,
+	CISH_ERROR_ABORT,
+	CISH_ERROR_FOREIGN,
 
-	SUPERFORTH_ERROR_CANNOT_OPEN_FILE,
-	SUPERFORTH_ERROR_ROBOT
-} superforth_SUPERFORTH_ERROR_t;
+	CISH_ERROR_CANNOT_OPEN_FILE,
+	CISH_ERROR_ROBOT
+} cish_error_t;
 
 typedef struct machine_type_signature machine_type_sig_t;
 typedef struct machine_type_signature {
@@ -183,10 +195,15 @@ static uint16_t* trace_frame_bounds;
 static heap_alloc_t** freed_heap_allocs; //recycled heap allocations/objects
 
 //some debuging flags
-static superforth_SUPERFORTH_ERROR_t last_err;
-static uint64_t last_ip;
-#define PANIC_ON_FAIL(COND, ERR) {if(!(COND)) {last_err = ERR; return 0;}}
-#define PANIC(ERR) {last_err = ERR; return 0;}
+static cish_error_t last_err;
+
+#ifdef CISH_DEBUG
+#define PANIC(ERR, LAST_SRC_LOC) {last_err = ERR; last_src_loc = LAST_SRC_LOC; return 0;}
+#else
+#define PANIC(ERR, LAST_SRC_LOC) {last_err = ERR; return 0;}
+#endif // CISH_DEBUG
+
+#define PANIC_ON_FAIL(COND, ERR, LAST_SRC_LOC) {if(!(COND)) PANIC(ERR, LAST_SRC_LOC);}
 
 //more runtime stuff
 static uint16_t global_offset, position_count, heap_frame, heap_count, alloced_heap_allocs, trace_count, alloced_trace_allocs, freed_heap_count, alloc_freed_heaps; 
@@ -203,6 +220,40 @@ static heap_alloc_t** reset_stack;
 static uint16_t reset_count;
 static uint16_t alloced_reset;
 
+#ifdef CISH_DEBUG
+
+static src_loc_t* src_locs;
+static uint64_t src_loc_count;
+
+static uint64_t src_loc_stack[FRAME_LIMIT];
+static uint64_t last_src_loc;
+
+static void print_back_trace() {
+	src_loc_t src_loc;
+
+	puts("Traceback (most recent call last):");
+	for (uint_fast64_t i = 0; i < position_count; i++) {
+		src_loc = src_locs[src_loc_stack[i]];
+		printf("Cllfrm \"%s\", row %i, col %i:\n\t%s\n", src_loc.file_name, src_loc.row, src_loc.col, src_loc.line);
+	}
+
+	src_loc = src_locs[last_src_loc];
+	printf("At \"%s\", row %i, col %i:\n\t%s\n", src_loc.file_name, src_loc.row, src_loc.col, src_loc.line);
+
+	putchar('\t');
+	for (int i = 1; i < src_loc.col; i++) {
+		if (src_loc.line[i - 1] == '\t')
+			putchar('\t');
+		else
+			putchar(' ');
+	}
+
+	putchar('^');
+	putchar('\n');
+}
+
+#endif // CISH_DEBUG
+
 static int ffi_invoke(ffi_t* ffi_table, machine_reg_t* id_reg, machine_reg_t* in_reg, machine_reg_t* out_reg) {
 	if (id_reg->long_int >= ffi_table->func_count || id_reg->long_int < 0)
 		return 0;
@@ -211,10 +262,10 @@ static int ffi_invoke(ffi_t* ffi_table, machine_reg_t* id_reg, machine_reg_t* in
 
 heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 #define CHECK_HEAP_COUNT if(heap_count == UINT16_MAX) \
-							PANIC(SUPERFORTH_ERROR_MEMORY); \
+							PANIC(CISH_ERROR_MEMORY, 0); \
 						if (heap_count == alloced_heap_allocs) { \
 							heap_alloc_t** new_heap_allocs = realloc(heap_allocs, (alloced_heap_allocs += 100) * sizeof(heap_alloc_t*)); \
-							PANIC_ON_FAIL(new_heap_allocs, SUPERFORTH_ERROR_MEMORY); \
+							PANIC_ON_FAIL(new_heap_allocs, CISH_ERROR_MEMORY, 0); \
 							heap_allocs = new_heap_allocs; \
 						}
 
@@ -229,7 +280,7 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 	}
 	else {
 		heap_alloc = malloc(sizeof(heap_alloc_t));
-		PANIC_ON_FAIL(heap_alloc, SUPERFORTH_ERROR_MEMORY);
+		PANIC_ON_FAIL(heap_alloc, CISH_ERROR_MEMORY, 0);
 		CHECK_HEAP_COUNT;
 		heap_allocs[heap_count++] = heap_alloc;
 		heap_alloc->reg_with_table = 1;
@@ -239,12 +290,12 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 	heap_alloc->gc_flag = 0;
 	heap_alloc->trace_mode = trace_mode;
 	heap_alloc->type_sig = NULL;
-	PANIC_ON_FAIL(heap_alloc, SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(heap_alloc, CISH_ERROR_MEMORY, 0);
 	if (req_size) {
-		PANIC_ON_FAIL(heap_alloc->registers = malloc(req_size * sizeof(machine_reg_t)), SUPERFORTH_ERROR_MEMORY);
-		PANIC_ON_FAIL(heap_alloc->init_stat = calloc(req_size, sizeof(int)), SUPERFORTH_ERROR_MEMORY);
+		PANIC_ON_FAIL(heap_alloc->registers = malloc(req_size * sizeof(machine_reg_t)), CISH_ERROR_MEMORY, 0);
+		PANIC_ON_FAIL(heap_alloc->init_stat = calloc(req_size, sizeof(int)), CISH_ERROR_MEMORY, 0);
 		if (trace_mode == GC_TRACE_MODE_SOME)
-			PANIC_ON_FAIL(heap_alloc->trace_stat = malloc(req_size * sizeof(int)), SUPERFORTH_ERROR_MEMORY);
+			PANIC_ON_FAIL(heap_alloc->trace_stat = malloc(req_size * sizeof(int)), CISH_ERROR_MEMORY, 0);
 	}
 	return heap_alloc;
 #undef CHECK_HEAP_COUNT
@@ -252,7 +303,7 @@ heap_alloc_t* alloc(uint16_t req_size, gc_trace_mode_t trace_mode) {
 
 static int install_stdlib();
 static int init_runtime(int type_table_size) {
-	last_err = SUPERFORTH_ERROR_NONE;
+	last_err = CISH_ERROR_NONE;
 	global_offset = 0;
 	position_count = 0;
 	heap_frame = 0;
@@ -298,7 +349,7 @@ static void free_heap_alloc(heap_alloc_t* heap_alloc) {
 static int recycle_heap_alloc(heap_alloc_t* heap_alloc) {
 	if (freed_heap_count == alloc_freed_heaps) {
 		heap_alloc_t** new_freed_heaps = realloc(freed_heap_allocs, (alloc_freed_heaps += 10) * sizeof(heap_alloc_t*));
-		PANIC_ON_FAIL(new_freed_heaps, SUPERFORTH_ERROR_MEMORY);
+		PANIC_ON_FAIL(new_freed_heaps, CISH_ERROR_MEMORY, 0);
 		freed_heap_allocs = new_freed_heaps;
 	}
 	freed_heap_allocs[freed_heap_count++] = heap_alloc;
@@ -341,6 +392,11 @@ static void free_runtime() {
 	free(defined_signatures);
 	free(ffi_table.func_table);
 	free(reset_stack);
+
+#ifdef CISH_DEBUG
+	free(src_locs);
+#endif // CISH_DEBUG
+
 }
 
 static machine_type_sig_t* new_type_sig() {
@@ -359,7 +415,7 @@ static int atomize_heap_type_sig(machine_type_sig_t prototype, machine_type_sig_
 	else {
 		output->super_signature = prototype.super_signature;
 		if ((output->sub_type_count = prototype.sub_type_count) && prototype.super_signature != 3) {
-			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), SUPERFORTH_ERROR_MEMORY);
+			PANIC_ON_FAIL(output->sub_types = malloc(prototype.sub_type_count * sizeof(machine_type_sig_t)), CISH_ERROR_MEMORY, 0);
 			for (uint_fast8_t i = 0; i < output->sub_type_count; i++)
 				ESCAPE_ON_FAIL(atomize_heap_type_sig(prototype.sub_types[i], &output->sub_types[i], atom_typeargs));
 		}
@@ -439,7 +495,7 @@ static int trace(heap_alloc_t* heap_alloc) {
 
 	if (reset_count == alloced_reset) {
 		heap_alloc_t** new_reset_stack = realloc(reset_stack, (alloced_reset += 32) * sizeof(heap_alloc_t*));
-		PANIC_ON_FAIL(new_reset_stack, SUPERFORTH_ERROR_MEMORY);
+		PANIC_ON_FAIL(new_reset_stack, CISH_ERROR_MEMORY, 0);
 		reset_stack = new_reset_stack;
 	}
 
@@ -523,7 +579,7 @@ static int64_t longpow(int64_t base, int64_t exp) {
 
 #define TRACE_COUNT_CHECK if (trace_count == alloced_trace_allocs) {\
 								heap_alloc_t** new_trace_stack = realloc(heap_traces, (alloced_trace_allocs += 10) * sizeof(heap_alloc_t*));\
-								PANIC_ON_FAIL(new_trace_stack, SUPERFORTH_ERROR_MEMORY);\
+								PANIC_ON_FAIL(new_trace_stack, CISH_ERROR_MEMORY, 0);\
 								heap_traces = new_trace_stack;\
 						  };
 
@@ -573,7 +629,7 @@ static int std_ftos(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_stof(machine_reg_t* in, machine_reg_t* out) {
 	char* buffer = heap_alloc_str(in->heap_alloc);
-	PANIC_ON_FAIL(buffer, SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(buffer, CISH_ERROR_MEMORY, 0);
 	char* ferror;
 	out->float_int = strtod(buffer, &ferror);
 	free(buffer);
@@ -594,7 +650,7 @@ static int std_itos(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_stoi(machine_reg_t* in, machine_reg_t* out) {
 	char* buffer = heap_alloc_str(in->heap_alloc);
-	PANIC_ON_FAIL(buffer, SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(buffer, CISH_ERROR_MEMORY, 0);
 	out->long_int = strtol(buffer, NULL, 10);
 	free(buffer);
 	return 1;
@@ -612,7 +668,7 @@ static int std_itoc(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_out(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOMODE
-	PANIC(SUPERFORTH_ERROR_FOREIGN); //input is not supported in robomode
+	PANIC(CISH_ERROR_FOREIGN, 0); //input is not supported in robomode
 #else
 	putchar(in->char_int);
 #endif
@@ -621,7 +677,7 @@ static int std_out(machine_reg_t* in, machine_reg_t* out) {
 
 static int std_in(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOMODE
-	PANIC(SUPERFORTH_ERROR_FOREIGN); //input is not supported in robomode
+	PANIC(CISH_ERROR_FOREIGN, 0); //input is not supported in robomode
 #else
 	out->char_int = getchar();
 #endif // ROBOMODE
@@ -659,7 +715,7 @@ static int std_sleep(machine_reg_t* in, machine_reg_t* out) {
 #else
 
 #define milliseconds in->long_int
-#ifdef _WIN32 || WIN32
+#ifdef _WIN32
 	Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
 	struct timespec ts;
@@ -680,12 +736,13 @@ static int std_sleep(machine_reg_t* in, machine_reg_t* out) {
 static int std_realloc(machine_reg_t* in, machine_reg_t* out) {
 	heap_alloc_t* alloc = out->heap_alloc;
 
-	if (alloc->trace_mode == GC_TRACE_MODE_SOME)
-		PANIC(SUPERFORTH_ERROR_INTERNAL); //cannot realloc non array object
+	if (alloc->trace_mode == GC_TRACE_MODE_SOME || alloc->limit > UINT16_MAX - in->long_int)
+		PANIC(CISH_ERROR_INTERNAL, 0); //cannot realloc non array object nor go above uint16 length limit
 
-	PANIC_ON_FAIL(alloc->registers = realloc(alloc->registers, (alloc->limit + in->long_int) * sizeof(machine_reg_t)), SUPERFORTH_ERROR_MEMORY);
-	PANIC_ON_FAIL(alloc->init_stat = realloc(alloc->init_stat, (alloc->limit + in->long_int) * sizeof(int)), SUPERFORTH_ERROR_MEMORY);
+	PANIC_ON_FAIL(alloc->registers = realloc(alloc->registers, (alloc->limit + in->long_int) * sizeof(machine_reg_t)), CISH_ERROR_MEMORY, 0);
+	PANIC_ON_FAIL(alloc->init_stat = realloc(alloc->init_stat, (alloc->limit + in->long_int) * sizeof(int)), CISH_ERROR_MEMORY, 0);
 	memset(&alloc->init_stat[alloc->limit], 0, in->long_int * sizeof(int));
+
 	alloc->limit += in->long_int;
 
 	return 1;
@@ -707,7 +764,7 @@ static enum pros_op_mode {
 
 static int robot_get_opmode(machine_reg_t* in, machine_reg_t* out) {
 	if (op_mode == OP_MODE_UNINIT)
-		PANIC(SUPERFORTH_ERROR_INTERNAL);
+		PANIC(CISH_ERROR_INTERNAL, 0);
 	out->long_int = op_mode - 1;
 	return 1;
 }
@@ -738,7 +795,7 @@ static int robot_move_motor(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("motor move(port: %"PRIu8", voltage: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_move_voltage(selected_port, in->long_int), SUPERFORTH_ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_move_voltage(selected_port, in->long_int), CISH_ERROR_ROBOT, 0);
 #endif // ROBOSIM
 	return 1;
 }
@@ -757,7 +814,7 @@ static int robot_config_motor_gearset(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor gearset(port: %"PRIu8", gearset: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_gearing(selected_port, in->long_int) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_gearing(selected_port, in->long_int) != PROS_ERR, CISH_ERROR_ROBOT, 0);
 #endif // ROBOSIM
 	return 1;
 }
@@ -766,7 +823,7 @@ static int robot_config_motor_encoding(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor encoding(port: %"PRIu8", encoding: %"PRIi64")\n", selected_port, in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_encoder_units(selected_port, in->long_int) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_encoder_units(selected_port, in->long_int) != PROS_ERR, CISH_ERROR_ROBOT, 0);
 #endif // ROBOSIM
 	return 1;
 }
@@ -775,7 +832,7 @@ static int robot_config_motor_reversed(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Configured motor reverse(port: %"PRIu8", encoding: %s)\n", selected_port, in->bool_flag ? "true" : "false");
 #else
-	PANIC_ON_FAIL(motor_set_reversed(selected_port, in->bool_flag) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_reversed(selected_port, in->bool_flag) != PROS_ERR, CISH_ERROR_ROBOT, 0);
 #endif // ROBOSIM
 	return 1;
 }
@@ -793,7 +850,7 @@ static int robot_set_zero_encoder(machine_reg_t* in, machine_reg_t* out) {
 #ifdef ROBOSIM
 	printf("Setting encoder position to zero for motor %"PRIu8".\n", in->long_int);
 #else
-	PANIC_ON_FAIL(motor_set_zero_position(in->long_int, motor_get_position(in->long_int)) != PROS_ERR, SUPERFORTH_ERROR_ROBOT);
+	PANIC_ON_FAIL(motor_set_zero_position(in->long_int, motor_get_position(in->long_int)) != PROS_ERR, CISH_ERROR_ROBOT, 0);
 #endif // ROBOSIM
 	return 1;
 }
