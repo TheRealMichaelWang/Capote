@@ -25,6 +25,10 @@ final record triple<firstT, secondT, thirdT> {
 
 global readonly float nan = 0f/0f;
 
+proc assert(bool cond)
+	if(!cond)
+		abort; $an assertion failed
+
 proc forall<T>(array<T> a, proc<nothing, T> todo)
 	for(int i = 0; i < #a; i++)
 		todo(a[i]);
@@ -60,3 +64,10 @@ proc ctoi(char c) return int
 $converts an int to a char
 proc itoc(int i) return char
 	return foreign[14](i);
+
+proc dj2b(array<char> id) {
+	int hash_num = 5381;
+	for(int i = 0; i < #id; i++)
+		hash_num = (hash_num * 33) + foreign[15](id[i]);
+	return hash_num;
+}
