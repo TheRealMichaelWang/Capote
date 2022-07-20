@@ -57,6 +57,7 @@ typedef struct safe_gc {
 
 int init_safe_gc(safe_gc_t* safe_gc);
 void free_safe_gc(safe_gc_t* safe_gc, int free_transfers);
+int safe_gc_transfer_to(safe_gc_t* src, safe_gc_t* dest, int add_as_transfer);
 
 void* safe_malloc(safe_gc_t* safe_gc, int size);
 void* safe_calloc(safe_gc_t* safe_gc, int count, size_t size);

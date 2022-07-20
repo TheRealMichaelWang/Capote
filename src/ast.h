@@ -244,7 +244,7 @@ typedef struct ast_record_prop {
 
 	typecheck_type_t type;
 
-	int defer_init, is_readonly;
+	int defer_init, is_readonly, do_typeguard, do_sub_typeguard;
 } ast_record_prop_t;
 
 typedef struct ast_alloc_record_init_value {
@@ -285,6 +285,8 @@ typedef struct ast_get_prop {
 typedef struct ast_set_prop {
 	ast_value_t record, value;
 	ast_record_prop_t* property;
+
+	int do_typeguard, do_sub_typeguard, optimize_typeguard_downcast;
 } ast_set_prop_t;
 
 typedef struct ast_var_cache_entry {

@@ -110,11 +110,13 @@ static void emit_reg(FILE* file_out, compiler_reg_t reg, int get_ptr) {
 }
 
 int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* instructions, uint64_t count, int dbg, dbg_table_t* dbg_table) {
+	uint16_t extra_a, extra_b, extra_c;
 	static const char* num_types[] = {
 		"long_int",
 		"float_int"
 	};
-	fputs("\n//runs the instructions\nstatic int run() {\n\tmachine_type_sig_t* sig; void* scratch_ip; heap_alloc_t* scratch_heap; int64_t scratch_i;\n", file_out);
+	//machine_type_sig_t* sig; void* scratch_ip; heap_alloc_t* scratch_heap;
+	fputs("\n//runs the instructions\nstatic int run() {\n\tvoid* scratch_ptr; int64_t scratch_i; machine_type_sig_t scratch_sig, aux_sig2; \n", file_out);
 
 	for (uint_fast64_t i = 0; i < count; i++) {
 		dbg_src_loc_t* src_loc = dbg_table_find_src_loc(dbg_table, i);
@@ -128,6 +130,11 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		fputc('\t', file_out);
 
 		switch (instructions[i].op_code) {
+		case COMPILER_OP_CODE_SET_EXTRA_ARGS:
+			extra_a = instructions[i].regs[0].reg;
+			extra_b = instructions[i].regs[1].reg;
+			extra_c = instructions[i].regs[2].reg;
+			break;
 		case COMPILER_OP_CODE_ABORT:
 			if (instructions[i].regs[0].reg == ERROR_NONE)
 				fputs("return 1;", file_out);
@@ -155,8 +162,8 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_SET:
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			if (instructions[i].regs[2].reg) { //atomotize signature
-				fprintf(file_out, ".long_int = defined_sig_count; sig=new_type_sig(); PANIC_ON_FAIL(sig, CISH_ERROR_MEMORY, %"PRIu64"); "
-					"ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig, 1));", src_loc_id, instructions[i].regs[1].reg);
+				fprintf(file_out, ".long_int = defined_sig_count; scratch_ptr=new_type_sig(); PANIC_ON_FAIL((machine_type_sig_t*)scratch_ptr, CISH_ERROR_MEMORY, %"PRIu64"); "
+					"PANIC_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], scratch_ptr, 1), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id, instructions[i].regs[1].reg, src_loc_id);
 			}
 			else {//do not atomotize signature
 				fprintf(file_out, ".long_int = %"PRIu16";", instructions[i].regs[1].reg);
@@ -185,14 +192,14 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fprintf(file_out, "positions[position_count++] = &&label%"PRIu16";", label_buf->ins_label[i + 1]);
 			
 			if (instructions[i].regs[0].offset) {
-				fputs("scratch_ip = ", file_out);
+				fputs("scratch_ptr = ", file_out);
 				emit_reg(file_out, instructions[i].regs[0], 0);
 				fputs(".ip;", file_out);
 			}
 			fprintf(file_out, "global_offset += %"PRIu16";", instructions[i].regs[1].reg);
 
 			if (instructions[i].regs[0].offset) {
-				fputs("goto *scratch_ip;", file_out);
+				fputs("goto *scratch_ptr;", file_out);
 			}
 			else {
 				fputs("goto *(", file_out);
@@ -209,7 +216,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			break;
 		case COMPILER_OP_CODE_LOAD_ALLOC:
 			//set scratchepads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 			fputs("scratch_i = ", file_out);
@@ -217,43 +224,43 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fputs(".long_int;", file_out);
 
 			//bounds check
-			fprintf(file_out, "PANIC_ON_FAIL(scratch_i < scratch_heap->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(scratch_i < ((heap_alloc_t*)scratch_ptr)->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", src_loc_id);
 			//mem init check
-			fprintf(file_out, "PANIC_ON_FAIL(scratch_heap->init_stat[scratch_i], CISH_ERROR_READ_UNINIT, %"PRIu64");", src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(((heap_alloc_t*)scratch_ptr)->init_stat[scratch_i], CISH_ERROR_READ_UNINIT, %"PRIu64");", src_loc_id);
 
 			emit_reg(file_out, instructions[i].regs[2], 0);
-			fputs(" = scratch_heap->registers[scratch_i];", file_out);
+			fputs(" = ((heap_alloc_t*)scratch_ptr)->registers[scratch_i];", file_out);
 			break;
 		case COMPILER_OP_CODE_LOAD_ALLOC_I:
 			//set scratchepads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 
 			//mem init check
-			fprintf(file_out, "PANIC_ON_FAIL(scratch_heap->init_stat[%"PRIu16"], CISH_ERROR_READ_UNINIT, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(((heap_alloc_t*)scratch_ptr)->init_stat[%"PRIu16"], CISH_ERROR_READ_UNINIT, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
 
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fprintf(file_out, " = scratch_heap->registers[%"PRIu16"];", instructions[i].regs[2].reg);
+			fprintf(file_out, " = ((heap_alloc_t*)scratch_ptr)->registers[%"PRIu16"];", instructions[i].regs[2].reg);
 			break;
 		case COMPILER_OP_CODE_LOAD_ALLOC_I_BOUND:
 			//set scratchepads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 
 			//bounds check
-			fprintf(file_out, "PANIC_ON_FAIL(%"PRIu16" < scratch_heap->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(%"PRIu16" < ((heap_alloc_t*)scratch_ptr)->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
 
 			//mem init check
-			fprintf(file_out, "PANIC_ON_FAIL(scratch_heap->init_stat[%"PRIu16"], CISH_ERROR_READ_UNINIT, %"PRIu64"); ", instructions[i].regs[2].reg, src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(((heap_alloc_t*)scratch_ptr)->init_stat[%"PRIu16"], CISH_ERROR_READ_UNINIT, %"PRIu64"); ", instructions[i].regs[2].reg, src_loc_id);
 
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fprintf(file_out, " = scratch_heap->registers[%"PRIu16"];", instructions[i].regs[2].reg);
+			fprintf(file_out, " = ((heap_alloc_t*)scratch_ptr)->registers[%"PRIu16"];", instructions[i].regs[2].reg);
 			break;
 		case COMPILER_OP_CODE_STORE_ALLOC:
 			//set scratchpads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 			fputs("scratch_i = ", file_out);
@@ -261,40 +268,40 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fputs(".long_int;", file_out);
 
 			//bounds check
-			fprintf(file_out, "PANIC_ON_FAIL(scratch_i < scratch_heap->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(scratch_i < ((heap_alloc_t*)scratch_ptr)->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", src_loc_id);
 
 			//set mem init status
-			fputs("scratch_heap->init_stat[scratch_i] = 1;", file_out);
-			fputs("scratch_heap->registers[scratch_i] = ", file_out);
+			fputs("((heap_alloc_t*)scratch_ptr)->init_stat[scratch_i] = 1;", file_out);
+			fputs("((heap_alloc_t*)scratch_ptr)->registers[scratch_i] = ", file_out);
 			emit_reg(file_out, instructions[i].regs[2], 0);
 			fputc(';', file_out);
 			break;
 		case COMPILER_OP_CODE_STORE_ALLOC_I:
 			//set scratchpads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 
 			//set mem init status
-			fprintf(file_out, "scratch_heap->init_stat[%"PRIu16"] = 1;", instructions[i].regs[2].reg);
+			fprintf(file_out, "((heap_alloc_t*)scratch_ptr)->init_stat[%"PRIu16"] = 1;", instructions[i].regs[2].reg);
 
-			fprintf(file_out, "scratch_heap->registers[%"PRIu16"] = ", instructions[i].regs[2].reg);
+			fprintf(file_out, "((heap_alloc_t*)scratch_ptr)->registers[%"PRIu16"] = ", instructions[i].regs[2].reg);
 			emit_reg(file_out, instructions[i].regs[1], 0);
 			fputc(';', file_out);
 			break;
 		case COMPILER_OP_CODE_STORE_ALLOC_I_BOUND:
 			//set scratchpads
-			fputs("scratch_heap = ", file_out);
+			fputs("scratch_ptr = ", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc;", file_out);
 
 			//bounds check
-			fprintf(file_out, "PANIC_ON_FAIL(%"PRIu16" < scratch_heap->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(%"PRIu16" < ((heap_alloc_t*)scratch_ptr)->limit, CISH_ERROR_INDEX_OUT_OF_RANGE, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
 
 			//set mem init status
-			fprintf(file_out, "scratch_heap->init_stat[%"PRIu16"] = 1;", instructions[i].regs[2].reg);
+			fprintf(file_out, "((heap_alloc_t*)scratch_ptr)->init_stat[%"PRIu16"] = 1;", instructions[i].regs[2].reg);
 
-			fprintf(file_out, "scratch_heap->registers[%"PRIu16"] = ", instructions[i].regs[2].reg);
+			fprintf(file_out, "((heap_alloc_t*)scratch_ptr)->registers[%"PRIu16"] = ", instructions[i].regs[2].reg);
 			emit_reg(file_out, instructions[i].regs[1], 0);
 			fputc(';', file_out);
 			break;
@@ -360,7 +367,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fputs(".long_int].super_signature >= 9);", file_out);
 			break;
 		case COMPILER_OP_CODE_GC_CLEAN:
-			fputs("ESCAPE_ON_FAIL(gc_clean());", file_out);
+			fprintf(file_out, "PANIC_ON_FAIL(gc_clean(), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
 			break;
 		case COMPILER_OP_CODE_AND:
 			emit_reg(file_out, instructions[i].regs[2], 0);
@@ -499,10 +506,10 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		}
 		case COMPILER_OP_CODE_CONFIG_TYPESIG:
 			if (instructions[i].regs[2].reg) {
-				fprintf(file_out, "PANIC_ON_FAIL(sig = malloc(sizeof(machine_type_sig_t)), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
-				fprintf(file_out, "ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], sig, 1));", instructions[i].regs[1].reg);
+				fprintf(file_out, "PANIC_ON_FAIL(scratch_ptr = malloc(sizeof(machine_type_sig_t)), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
+				fprintf(file_out, "PANIC_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], (machine_type_sig_t*)scratch_ptr, 1), CISH_ERROR_MEMORY, %"PRIu64");", instructions[i].regs[1].reg, src_loc_id);
 				emit_reg(file_out, instructions[i].regs[0], 0);
-				fputs(".heap_alloc->type_sig = sig;", file_out);
+				fputs(".heap_alloc->type_sig = (machine_type_sig_t*)scratch_ptr;", file_out);
 			}
 			else {
 				emit_reg(file_out, instructions[i].regs[0], 0);
@@ -528,7 +535,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".bool_flag = type_signature_match(defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fputs(".long_int].super_signature >= 9 ? *", file_out);
+			fputs(".long_int].super_signature >= 10 ? *", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc->type_sig : defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
@@ -540,7 +547,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".bool_flag = type_signature_match(defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fputs(".long_int].super_signature >= 9 ? *", file_out);
+			fputs(".long_int].super_signature >= 10 ? *", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc->type_sig : defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
@@ -557,7 +564,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_DYNAMIC_TYPECAST_DD:
 			fputs("PANIC_ON_FAIL(type_signature_match(defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fputs(".long_int].super_signature >= 9 ? *", file_out);
+			fputs(".long_int].super_signature >= 10 ? *", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc->type_sig : defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
@@ -568,7 +575,7 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_DYNAMIC_TYPECAST_DR:
 			fputs("PANIC_ON_FAIL(type_signature_match(defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
-			fputs(".long_int].super_signature >= 9 ? *", file_out);
+			fputs(".long_int].super_signature >= 10 ? *", file_out);
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fputs(".heap_alloc->type_sig : defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
@@ -580,6 +587,61 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fputs(".heap_alloc->type_sig, defined_signatures[", file_out);
 			emit_reg(file_out, instructions[i].regs[1], 0);
 			fprintf(file_out, ".long_int]), CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			break;
+		case COMPILER_OP_CODE_TYPEGUARD_PROTECT_ARRAY:
+			fputs("if(((machine_type_sig_t*)(scratch_ptr = ", file_out);
+			emit_reg(file_out, instructions[i].regs[0], 0);
+			fputs(".heap_alloc->type_sig->sub_types))->super_signature > 10) ", file_out);
+			fputs("PANIC_ON_FAIL(type_signature_match(*", file_out);
+			emit_reg(file_out, instructions[i].regs[1], 0);
+			fprintf(file_out, ".heap_alloc->type_sig, *((machine_type_sig_t*)scratch_ptr)), CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			break;
+		case COMPILER_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY:
+			fputs("if((scratch_sig = ", file_out);
+			emit_reg(file_out, instructions[i].regs[0], 0);
+			fprintf(file_out, ".heap_alloc->type_sig->sub_types[%"PRIu16"]).super_signature >= 9)", instructions[i].regs[2].reg);
+			fputs("PANIC_ON_FAIL(type_signature_match(*", file_out);
+			emit_reg(file_out, instructions[i].regs[1], 0);
+			fprintf(file_out, ".heap_alloc->type_sig, scratch_sig), CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			break;
+		case COMPILER_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY_DOWNCAST:
+			fputs("PANIC_ON_FAIL(atomize_heap_type_sig(*", file_out);
+			emit_reg(file_out, instructions[i].regs[0], 0);
+			fprintf(file_out, ".heap_alloc->type_sig, &scratch_sig, 1), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(downcast_type_signature(&scratch_sig, %"PRIu16"), CISH_ERROR_MEMORY, %"PRIu64");"
+							  "aux_sig2 = scratch_sig.sub_types[%"PRIu16"];", extra_a, src_loc_id, instructions[i].regs[2].reg);
+
+			fputs("if(aux_sig2.super_signature >= 9 && !type_signature_match(*", file_out);
+			emit_reg(file_out, instructions[i].regs[1], 0);
+			fprintf(file_out, ".heap_alloc->type_sig, aux_sig2)) { "
+				"free_type_signature(&scratch_sig);"
+				"PANIC(CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			fputs("} free_type_signature(&scratch_sig);", file_out);
+			break;
+		case COMPILER_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY:
+			fprintf(file_out, "PANIC_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], &scratch_sig, 0), CISH_ERROR_MEMORY, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
+			fputs("PANIC_ON_FAIL(get_super_type(", file_out);
+			emit_reg(file_out, instructions[i].regs[0], 0);
+			fprintf(file_out, ".heap_alloc->type_sig->sub_types, &scratch_sig), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
+			fputs("if(!type_signature_match(*", file_out);
+			emit_reg(file_out, instructions[i].regs[1], 0);
+			fputs(".heap_alloc->type_sig, scratch_sig)) { free_type_signature(&scratch_sig); ", file_out);
+			fprintf(file_out, "PANIC(CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			fputs("}; free_type_signature(&scratch_sig);", file_out);
+			break;
+		case COMPILER_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY_DOWNCAST:
+			fputs("PANIC_ON_FAIL(atomize_heap_type_sig(*", file_out);
+			emit_reg(file_out, instructions[i].regs[0], 0);
+			fprintf(file_out, ".heap_alloc->type_sig, &aux_sig2, 1), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(downcast_type_signature(&aux_sig2, %"PRIu16"), CISH_ERROR_MEMORY, %"PRIu64");", extra_a, src_loc_id);
+
+			fprintf(file_out, "PANIC_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], &scratch_sig, 0), CISH_ERROR_MEMORY, %"PRIu64");", instructions[i].regs[2].reg, src_loc_id);
+			fprintf(file_out, "PANIC_ON_FAIL(get_super_type(aux_sig2.sub_types, &scratch_sig), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id);
+			fputs("if(!type_signature_match(*", file_out);
+			emit_reg(file_out, instructions[i].regs[1], 0);
+			fputs(".heap_alloc->type_sig, scratch_sig)) { free_type_signature(&scratch_sig); free_type_signature(&aux_sig2);", file_out);
+			fprintf(file_out, "PANIC(CISH_ERROR_UNEXPECTED_TYPE, %"PRIu64");", src_loc_id);
+			fputs("}; free_type_signature(&scratch_sig); free_type_signature(&aux_sig2);", file_out);
 			break;
 		default:
 			return 0;

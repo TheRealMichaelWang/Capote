@@ -18,8 +18,7 @@ void free_safe_gc(safe_gc_t* safe_gc, int free_transfers) {
 	}
 	if (free_transfers) {
 		for (uint_fast64_t i = 0; i < safe_gc->transfer_entry_count; i++)
-			if(safe_gc->transfer_entries[i])
-				free(safe_gc->transfer_entries[i]);
+			free(safe_gc->transfer_entries[i]);
 	}
 	free(safe_gc->entries);
 	free(safe_gc->availible_entries);
@@ -37,6 +36,35 @@ static void** new_entry(safe_gc_t* safe_gc) {
 		}
 		return &safe_gc->entries[safe_gc->entry_count++];
 	}
+}
+
+static void** new_transfer_entry(safe_gc_t* safe_gc) {
+	if (safe_gc->transfer_entry_count == safe_gc->alloced_transfer_entries) {
+		void* new_transfer_entries = realloc(safe_gc->transfer_entries, (safe_gc->alloced_transfer_entries += 2) * sizeof(void*));
+		if (!new_transfer_entries)
+			return NULL;
+		safe_gc->transfer_entries = new_transfer_entries;
+	}
+	return &safe_gc->transfer_entries[safe_gc->transfer_entry_count++];
+}
+
+int safe_gc_transfer_to(safe_gc_t* src, safe_gc_t* dest, int add_as_transfer) {
+	for (uint_fast64_t i = 0; i < src->entry_count; i++) {
+		if (src->entries[i]) {
+			void** entry;
+			if (add_as_transfer)
+				entry = new_transfer_entry(dest);
+			else
+				entry = new_entry(src);
+			ESCAPE_ON_FAIL(entry);
+			*entry = src->entries[i];
+		}
+	}
+
+	free(src->entries);
+	free(src->availible_entries);
+	free(src->transfer_entries);
+	return 1;
 }
 
 static void** find_entry(safe_gc_t* safe_gc, void* data, int no_transfer) {
@@ -69,18 +97,14 @@ void* safe_malloc(safe_gc_t* safe_gc, int size) {
 }
 
 void* safe_transfer_malloc(safe_gc_t* safe_gc, int size) {
+	void** entry = new_transfer_entry(safe_gc);
+	ESCAPE_ON_FAIL(entry);
+
 	void* data = malloc(size);
 	ESCAPE_ON_FAIL(data);
 
-	if (safe_gc->transfer_entry_count == safe_gc->alloced_transfer_entries) {
-		void* new_transfer_entries = realloc(safe_gc->transfer_entries, (safe_gc->alloced_transfer_entries += 2) * sizeof(void*));
-		if (!new_transfer_entries) {
-			free(data);
-			return NULL;
-		}
-		safe_gc->transfer_entries = new_transfer_entries;
-	}
-	return safe_gc->transfer_entries[safe_gc->transfer_entry_count++] = data;
+	*entry = data;
+	return data;
 }
 
 void* safe_calloc(safe_gc_t* safe_gc, int count, size_t size) {

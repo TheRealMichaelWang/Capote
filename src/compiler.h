@@ -103,6 +103,14 @@ typedef enum compiler_op_code {
 	COMPILER_OP_CODE_DYNAMIC_TYPECAST_DD,
 	COMPILER_OP_CODE_DYNAMIC_TYPECAST_DR,
 	COMPILER_OP_CODE_DYNAMIC_TYPECAST_RD,
+
+	COMPILER_OP_CODE_TYPEGUARD_PROTECT_ARRAY,
+	COMPILER_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY,
+	COMPILER_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY_DOWNCAST,
+	COMPILER_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY,
+	COMPILER_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY_DOWNCAST,
+
+	COMPILER_OP_CODE_SET_EXTRA_ARGS
 } compiler_op_code_t;
 
 typedef struct compiler_ins {
@@ -141,6 +149,4 @@ int init_ins_builder(ins_builder_t* ins_builder, safe_gc_t* safe_gc);
 int ins_builder_append_ins(ins_builder_t* ins_builder, compiler_ins_t ins);
 
 int compile(compiler_t* compiler, safe_gc_t* safe_gc, machine_t* target_machine, ast_t* ast);
-
-int compiler_define_typesig(compiler_t* compiler, ast_proc_t* proc, typecheck_type_t type);
 #endif // !COMPILER_H

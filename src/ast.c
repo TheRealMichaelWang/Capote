@@ -711,7 +711,7 @@ static int parse_var_decl(ast_parser_t* ast_parser, ast_decl_var_t* ast_decl_var
 	MATCH_TOK(TOK_SET);
 	READ_TOK;
 	ESCAPE_ON_FAIL(parse_expression(ast_parser, &ast_decl_var->set_value, &ast_decl_var->var_info->type, 0, 0));
-	
+
 	MATCH_TOK(TOK_SEMICOLON);
 	READ_TOK;
 	return 1;
@@ -761,7 +761,7 @@ static int parse_if_else(ast_parser_t* ast_parser, ast_cond_t* conditional, int 
 
 static int parse_statment(ast_parser_t* ast_parser, ast_statement_t* statement, ast_code_block_t* code_block, int in_loop) {
 	PANIC_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &statement->src_loc_id), ast_parser, ERROR_MEMORY);
-	
+
 	switch (LAST_TOK.type)
 	{
 	case TOK_DECLTYPE:
@@ -1127,7 +1127,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			for (uint_fast16_t i = 0; i < value->data.array_literal.element_count; i++) {
 				ESCAPE_ON_FAIL(value->data.array_literal.elements[i].data.primitive = ast_add_prim_value(ast_parser, (ast_primitive_t) {
 					.data.character = buffer[i],
-					.type = AST_PRIMITIVE_CHAR
+						.type = AST_PRIMITIVE_CHAR
 				}));
 				value->data.array_literal.elements[i].value_type = AST_VALUE_PRIMITIVE;
 				value->data.array_literal.elements[i].type.type = TYPE_PRIMITIVE_CHAR;
@@ -1388,7 +1388,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 	int has_incremented = 0;
 	while (LAST_TOK.type == TOK_OPEN_BRACKET || LAST_TOK.type == TOK_OPEN_PAREN || LAST_TOK.type == TOK_IS_TYPE || LAST_TOK.type == TOK_INCREMENT || LAST_TOK.type == TOK_DECREMENT || LAST_TOK.type == TOK_PERIOD || (LAST_TOK.type == TOK_LESS && value->type.type == TYPE_SUPER_PROC)) {
 		uint32_t src_loc_id;
-		PANIC_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &src_loc_id), ast_parser, ERROR_MEMORY);
+		ESCAPE_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &src_loc_id));
 
 		if (LAST_TOK.type == TOK_IS_TYPE) {
 			READ_TOK;
@@ -1625,7 +1625,7 @@ int init_ast(ast_t* ast, ast_parser_t* ast_parser, dbg_table_t* dbg_table) {
 	PANIC_ON_FAIL(!first_src_id, ast_parser, ERROR_INTERNAL);
 	dbg_table->src_locations[0].min_ip = 0;
 	dbg_table->src_locations[0].max_ip = UINT64_MAX - 1;
-
+	
 	ESCAPE_ON_FAIL(ast_parser_new_frame(ast_parser, NULL, 0));
 	ESCAPE_ON_FAIL(parse_code_block(ast_parser, &ast->exec_block, 0, 0));
 	ast_parser->top_level_local_count = CURRENT_FRAME.max_scoped_locals;

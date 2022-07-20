@@ -325,10 +325,10 @@ static int init_runtime(int type_table_size) {
 	return 1;
 }
 
-static void free_defined_signature(machine_type_sig_t* type_sig) {
+static void free_type_signature(machine_type_sig_t* type_sig) {
 	if (type_sig->super_signature != 3 && type_sig->sub_type_count) {
 		for (uint_fast8_t i = 0; i < type_sig->sub_type_count; i++)
-			free_defined_signature(&type_sig->sub_types[i]);
+			free_type_signature(&type_sig->sub_types[i]);
 		free(type_sig->sub_types);
 	}
 }
@@ -341,7 +341,7 @@ static void free_heap_alloc(heap_alloc_t* heap_alloc) {
 			free(heap_alloc->trace_stat);
 	}
 	if (heap_alloc->type_sig && !(heap_alloc->type_sig >= defined_signatures && heap_alloc->type_sig < (defined_signatures + defined_sig_count))) {
-		free_defined_signature(heap_alloc->type_sig);
+		free_type_signature(heap_alloc->type_sig);
 		free(heap_alloc->type_sig);
 	}
 }
@@ -383,7 +383,7 @@ static void free_runtime() {
 	for (uint_fast16_t i = 0; i < freed_heap_count; i++)
 		free(freed_heap_allocs[i]);
 	for (uint_fast16_t i = 0; i < defined_sig_count; i++)
-		free_defined_signature(&defined_signatures[i]);
+		free_type_signature(&defined_signatures[i]);
 	free(heap_allocs);
 	free(heap_traces);
 	free(trace_frame_bounds);
@@ -443,6 +443,21 @@ static int is_super_type(uint16_t child_sig, uint16_t super_sig) {
 	return 0;
 }
 
+static int downcast_type_signature(machine_type_sig_t* sig, uint16_t req_record) {
+	if (sig->super_signature < 10)
+		return 0;
+
+	while (sig->super_signature != req_record)
+	{
+		machine_type_sig_t super_type;
+		ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[type_table[sig->super_signature - 10] - 1], &super_type, 0));
+		ESCAPE_ON_FAIL(get_super_type(sig->sub_types, &super_type));
+		free_type_signature(sig);
+		*sig = super_type;
+	}
+	return 1;
+}
+
 static int type_signature_match(machine_type_sig_t match_signature, machine_type_sig_t parent_signature) {
 	if (parent_signature.super_signature == 2)
 		return 1;
@@ -454,11 +469,10 @@ static int type_signature_match(machine_type_sig_t match_signature, machine_type
 
 	if (match_signature.super_signature != parent_signature.super_signature) {
 		if (is_super_type(match_signature.super_signature, parent_signature.super_signature)) {
-			machine_type_sig_t super_type;
-			ESCAPE_ON_FAIL(atomize_heap_type_sig(defined_signatures[type_table[match_signature.super_signature - 10] - 1], &super_type, 0));
-			ESCAPE_ON_FAIL(get_super_type(match_signature.sub_types, &super_type));
-			int res = type_signature_match(super_type, parent_signature);
-			free_defined_signature(&super_type);
+			ESCAPE_ON_FAIL(atomize_heap_type_sig(match_signature, &match_signature, 0));
+			ESCAPE_ON_FAIL(downcast_type_signature(&match_signature, parent_signature.super_signature));
+			int res = type_signature_match(match_signature, parent_signature);
+			free_type_signature(&match_signature);
 			return res;
 		}
 		return 0;

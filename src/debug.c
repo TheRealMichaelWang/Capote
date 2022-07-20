@@ -107,9 +107,5 @@ dbg_src_loc_t* dbg_table_find_src_loc(dbg_table_t* dbg_table, uint64_t ip) {
 			}
 		}
 
-	if (src_loc == NULL) {
-		int asd = 32;
-	}
-
 	return src_loc;
 }
