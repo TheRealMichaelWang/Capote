@@ -172,9 +172,9 @@ static void allocate_code_block_regs(compiler_t* compiler, ast_code_block_t code
 				(var_decl.set_value.value_type == AST_VALUE_PRIMITIVE ||
 					var_decl.set_value.value_type == AST_VALUE_PROC ||
 
-					(var_decl.set_value.value_type == AST_VALUE_VAR && !var_decl.set_value.data.variable->has_mutated) &&
+				(var_decl.set_value.value_type == AST_VALUE_VAR && !var_decl.set_value.data.variable->has_mutated) &&
 					!(var_decl.var_info->is_global && !var_decl.set_value.data.variable->is_global))
-				) {
+			) {
 				current_reg = allocate_value_regs(compiler, var_decl.set_value, current_reg, NULL);
 				if (var_decl.var_info->is_used) {
 					compiler->var_regs[var_decl.var_info->id] = compiler->eval_regs[var_decl.set_value.id];
@@ -385,7 +385,7 @@ static int compile_value(compiler_t* compiler, ast_value_t value, ast_proc_t* pr
 			ESCAPE_ON_FAIL(compile_value(compiler, value.data.set_prop->value, proc));
 
 			if (value.data.set_prop->do_typeguard) {
-				if (value.data.set_prop->optimize_typeguard_downcast)
+				if(value.data.set_prop->optimize_typeguard_downcast)
 					EMIT_INS(INS3(COMPILER_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY, compiler->eval_regs[value.data.set_prop->record.id], compiler->eval_regs[value.data.set_prop->value.id], GLOB_REG(value.data.set_prop->property->id)))
 				else {
 					EMIT_INS(INS1(COMPILER_OP_CODE_SET_EXTRA_ARGS, GLOB_REG(value.data.set_prop->record.type.type_id + TYPE_SUPER_RECORD)));
@@ -528,12 +528,12 @@ static int compile_value(compiler_t* compiler, ast_value_t value, ast_proc_t* pr
 				else {
 					machine_type_sig_t* sig;
 					ESCAPE_ON_FAIL(sig = compiler_define_typesig(compiler, proc, value.data.proc_call->typeargs[i]))
-						if (typecheck_has_type(value.type, TYPE_TYPEARG)) {
-							EMIT_INS(INS3(COMPILER_OP_CODE_SET, LOC_REG(gen_arg_reg++), GLOB_REG(sig - compiler->target_machine->defined_signatures), GLOB_REG(1)));
-							type_sigs_to_pop++;
-						}
-						else
-							EMIT_INS(INS3(COMPILER_OP_CODE_SET, LOC_REG(gen_arg_reg++), GLOB_REG(sig - compiler->target_machine->defined_signatures), GLOB_REG(0)));
+					if (typecheck_has_type(value.type, TYPE_TYPEARG)) {
+						EMIT_INS(INS3(COMPILER_OP_CODE_SET, LOC_REG(gen_arg_reg++), GLOB_REG(sig - compiler->target_machine->defined_signatures), GLOB_REG(1)));
+						type_sigs_to_pop++;
+					}
+					else
+						EMIT_INS(INS3(COMPILER_OP_CODE_SET, LOC_REG(gen_arg_reg++), GLOB_REG(sig - compiler->target_machine->defined_signatures), GLOB_REG(0)));
 				}
 				//}
 			}
@@ -558,8 +558,10 @@ static int compile_value(compiler_t* compiler, ast_value_t value, ast_proc_t* pr
 	}
 	if (value.trace_status == POSTPROC_TRACE_CHILDREN && (proc && proc->do_gc))//|| value.trace_status == POSTPROC_SUPERTRACE_CHILDREN)
 		EMIT_INS(INS2(COMPILER_OP_CODE_GC_TRACE, compiler->eval_regs[value.id], GLOB_REG(0)))
-	else if (value.trace_status == POSTPROC_SUPERTRACE_CHILDREN)
+	else if (value.trace_status == POSTPROC_SUPERTRACE_CHILDREN) {
+		PANIC_ON_FAIL(proc->do_gc, compiler, ERROR_INTERNAL);
 		EMIT_INS(INS2(COMPILER_OP_CODE_GC_TRACE, compiler->eval_regs[value.id], GLOB_REG(1)))
+	}
 	else if (value.trace_status == POSTPROC_TRACE_DYNAMIC && (proc && proc->do_gc))
 		EMIT_INS(INS2(COMPILER_OP_CODE_DYNAMIC_TRACE, compiler->eval_regs[value.id], TYPEARG_INFO_REG(value.type)));
 
@@ -701,9 +703,10 @@ int compile(compiler_t* compiler, safe_gc_t* safe_gc, machine_t* target_machine,
 	//define standard type signatures (array<prim>)
 	for (typecheck_base_type_t prim = TYPE_PRIMITIVE_BOOL; prim <= TYPE_PRIMITIVE_FLOAT; prim++) {
 		machine_type_sig_t mybuf;
-		PANIC_ON_FAIL(mybuf.sub_types = malloc(sizeof(machine_type_sig_t)), compiler, ERROR_MEMORY); //define array<char> typesig
+		mybuf.super_signature = TYPE_SUPER_ARRAY;
+		PANIC_ON_FAIL(mybuf.sub_types = safe_transfer_malloc(compiler->safe_gc ,sizeof(machine_type_sig_t)), compiler, ERROR_MEMORY); //define array<char> typesig
 		mybuf.sub_types->super_signature = prim; mybuf.sub_types->sub_type_count = 0; mybuf.sub_type_count = 1;
-		PANIC_ON_FAIL(machine_get_typesig(compiler->target_machine, &mybuf, 0), compiler, ERROR_MEMORY);
+		PANIC_ON_FAIL(machine_get_typesig(compiler->target_machine, &mybuf, 0), compiler, compiler->target_machine->last_err);
 	}
 
 	allocate_code_block_regs(compiler, ast->exec_block, 0);
@@ -777,4 +780,196 @@ static machine_type_sig_t* compiler_define_typesig(compiler_t* compiler, ast_pro
 	else
 		safe_gc_transfer_to(&temp_safe_gc, compiler->safe_gc, 1);
 	return added;
+}
+
+void compiler_ins_to_machine_ins(compiler_ins_t* compiler_ins, machine_ins_t* machine_ins, uint64_t ins_count) {
+	static const machine_op_code_t machine_ops[] = {
+		MACHINE_OP_CODE_ABORT,
+		MACHINE_OP_CODE_FOREIGN_LLL,
+		MACHINE_OP_CODE_MOVE_LL,
+		MACHINE_OP_CODE_SET_L,
+		MACHINE_OP_CODE_POP_ATOM_TYPESIGS,
+		MACHINE_OP_CODE_JUMP,
+		MACHINE_OP_CODE_JUMP_CHECK_L,
+		MACHINE_OP_CODE_CALL_L,
+		MACHINE_OP_CODE_RETURN,
+		MACHINE_OP_CODE_LABEL_L,
+		MACHINE_OP_CODE_LOAD_ALLOC_LLL,
+		MACHINE_OP_CODE_LOAD_ALLOC_I_LL,
+		MACHINE_OP_CODE_LOAD_ALLOC_I_BOUND_LL,
+		MACHINE_OP_CODE_STORE_ALLOC_LLL,
+		MACHINE_OP_CODE_STORE_ALLOC_I_LL,
+		MACHINE_OP_CODE_STORE_ALLOC_I_BOUND_LL,
+		MACHINE_OP_CODE_CONF_TRACE_L,
+		MACHINE_OP_CODE_DYNAMIC_CONF_LL,
+		MACHINE_OP_CODE_DYNAMIC_CONF_ALL_LL,
+		MACHINE_OP_CODE_STACK_OFFSET,
+		MACHINE_OP_CODE_STACK_DEOFFSET,
+		MACHINE_OP_CODE_ALLOC_LL,
+		MACHINE_OP_CODE_ALLOC_I_L,
+		MACHINE_OP_CODE_FREE_L,
+		MACHINE_OP_CODE_DYNAMIC_FREE_LL,
+		MACHINE_OP_CODE_GC_NEW_FRAME,
+		MACHINE_OP_CODE_GC_TRACE_L,
+		MACHINE_OP_CODE_DYNAMIC_TRACE_LL,
+		MACHINE_OP_CODE_GC_CLEAN,
+		MACHINE_OP_CODE_AND_LLL,
+		MACHINE_OP_CODE_OR_LLL,
+		MACHINE_OP_CODE_NOT_LL,
+		MACHINE_OP_CODE_LENGTH_LL,
+		MACHINE_OP_CODE_PTR_EQUAL_LLL,
+		MACHINE_OP_CODE_BOOL_EQUAL_LLL,
+		MACHINE_OP_CODE_CHAR_EQUAL_LLL,
+		MACHINE_OP_CODE_LONG_EQUAL_LLL,
+		MACHINE_OP_CODE_FLOAT_EQUAL_LLL,
+		MACHINE_OP_CODE_LONG_MORE_LLL,
+		MACHINE_OP_CODE_LONG_LESS_LLL,
+		MACHINE_OP_CODE_LONG_MORE_EQUAL_LLL,
+		MACHINE_OP_CODE_LONG_LESS_EQUAL_LLL,
+		MACHINE_OP_CODE_LONG_ADD_LLL,
+		MACHINE_OP_CODE_LONG_SUBTRACT_LLL,
+		MACHINE_OP_CODE_LONG_MULTIPLY_LLL,
+		MACHINE_OP_CODE_LONG_DIVIDE_LLL,
+		MACHINE_OP_CODE_LONG_MODULO_LLL,
+		MACHINE_OP_CODE_LONG_EXPONENTIATE_LLL,
+		MACHINE_OP_CODE_FLOAT_MORE_LLL,
+		MACHINE_OP_CODE_FLOAT_LESS_LLL,
+		MACHINE_OP_CODE_FLOAT_MORE_EQUAL_LLL,
+		MACHINE_OP_CODE_FLOAT_LESS_EQUAL_LLL,
+		MACHINE_OP_CODE_FLOAT_ADD_LLL,
+		MACHINE_OP_CODE_FLOAT_SUBTRACT_LLL,
+		MACHINE_OP_CODE_FLOAT_MULTIPLY_LLL,
+		MACHINE_OP_CODE_FLOAT_DIVIDE_LLL,
+		MACHINE_OP_CODE_FLOAT_MODULO_LLL,
+		MACHINE_OP_CODE_FLOAT_EXPONENTIATE_LLL,
+		MACHINE_OP_CODE_LONG_NEGATE_LL,
+		MACHINE_OP_CODE_FLOAT_NEGATE_LL,
+		MACHINE_OP_CODE_LONG_INCREMENT_L,
+		MACHINE_OP_CODE_LONG_DECREMENT_L,
+		MACHINE_OP_CODE_FLOAT_INCREMENT_L,
+		MACHINE_OP_CODE_FLOAT_DECREMENT_L,
+		MACHINE_OP_CODE_CONFIG_TYPESIG_L,
+		MACHINE_OP_CODE_RUNTIME_TYPECHECK_LL,
+		MACHINE_OP_CODE_RUNTIME_TYPECAST_LL,
+		MACHINE_OP_CODE_DYNAMIC_TYPECHECK_DD_L,
+		MACHINE_OP_CODE_DYNAMIC_TYPECHECK_DR_L,
+		MACHINE_OP_CODE_DYNAMIC_TYPECHECK_RD_L,
+		MACHINE_OP_CODE_DYNAMIC_TYPECAST_DD_L,
+		MACHINE_OP_CODE_DYNAMIC_TYPECAST_DR_L,
+		MACHINE_OP_CODE_DYNAMIC_TYPECAST_RD_L,
+		MACHINE_OP_CODE_TYPEGUARD_PROTECT_ARRAY_LL,
+		MACHINE_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY_LL,
+		MACHINE_OP_CODE_TYPEGUARD_PROTECT_TYPEARG_PROPERTY_DOWNCAST_LL,
+		MACHINE_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY_LL,
+		MACHINE_OP_CODE_TYPEGUARD_PROTECT_SUB_PROPERTY_DOWNCAST_LL,
+
+		MACHINE_OP_CODE_SET_EXTRA_ARGS
+	};
+
+	static const int reg_operands[] = {
+		0, //abort
+		3, //foreign
+		2, //move
+		0, //set
+		0, //pop atom typesigs
+		0, //jump
+		1, //jump check
+		1, //call
+		0, //return 
+		1, //label
+		3, //load alloc
+		2, //load alloc (index)
+		2, //load alloc (index w/ bounds checking)
+		3, //store alloc
+		2, //store alloc (index)
+		2, //store alloc (index w/ bounds checking)
+		1, //configure trace
+		0, //dynamic configure trace
+		0, //dynamic configure all
+		0, //stack offset
+		0, //stack deoffset
+		2, //alloc
+		1, //alloc_i
+		1, //free
+		0, //dynamic free
+		0, //gc_new_frame
+		1, //gc_trace
+		1, //dynamic trace
+		0, //gc clean
+		3, //and
+		3, //or
+		2, //not,
+		2, //length,
+		3, //ptr equal
+		3, //bool equal
+		3, //char equal
+		3, //long equal
+		3, //float equal
+
+		3, //long more
+		3, //long less
+		3, //long
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+		3,
+
+		2, //long negate
+		2, //float negate
+		1, //long inc
+		1, //long dec
+		1, //float inc
+		1, //float dec
+
+		1, //config type signature
+		2, //runtime typecheck
+		2, //runtime typecast
+
+		1, //dynamic typecast dd
+		1, //dynamic typecast dr
+		1, //dynamic typecast rd
+		1, //dynamic typecheck dd
+		1, //dynamic typecheck dr
+		1, //dynamic typecheck rd
+		
+		2, //typeguard protect array elems
+		2, //typeguard protect record properties
+		2,
+		2, //typeguard protect record properties (w/ substitution)
+		2,
+
+		0 //sets extra argument registers
+	};
+	
+	for (uint_fast64_t i = 0; i < ins_count; i++) {
+		if (compiler_ins[i].op_code == COMPILER_OP_CODE_LONG_DECREMENT) {
+			int asd = 123;
+		}
+
+		uint8_t ins_offset = 0;
+		uint8_t reg_ops = reg_operands[compiler_ins[i].op_code];
+		for (uint_fast8_t j = 0; j < reg_ops; j++)
+			if(!compiler_ins[i].regs[j].offset)
+				ins_offset += (1 << (reg_ops - j - 1));
+		machine_ins[i] = (machine_ins_t){
+			.op_code = machine_ops[compiler_ins[i].op_code] + ins_offset,
+			.a = compiler_ins[i].regs[0].reg,
+			.b = compiler_ins[i].regs[1].reg,
+			.c = compiler_ins[i].regs[2].reg
+		};
+	}
 }

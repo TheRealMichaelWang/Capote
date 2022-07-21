@@ -47,7 +47,7 @@ int scanner_scan_char(scanner_t* scanner) {
 		case 'r': RETURN('\r');
 		case 't': RETURN('\t');
 		case 'v': RETURN('\v');
-		case '\\':
+		case '\\': 
 		case '\'':
 		case '\"':
 		case '?':
@@ -137,7 +137,7 @@ int scanner_scan_tok(scanner_t* scanner) {
 			RETURN(TOK_ABSTRACT);
 		case 210712410159:
 			RETURN(TOK_FINAL);
-		case 249885278712973151:
+		case 249885278712973151: 
 			RETURN(TOK_DEFERINIT);
 		case 7572685928825474: //mustinit is no longer a keyword
 			PANIC(scanner, ERROR_INTERNAL);

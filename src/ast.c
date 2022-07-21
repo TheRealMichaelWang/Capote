@@ -711,7 +711,7 @@ static int parse_var_decl(ast_parser_t* ast_parser, ast_decl_var_t* ast_decl_var
 	MATCH_TOK(TOK_SET);
 	READ_TOK;
 	ESCAPE_ON_FAIL(parse_expression(ast_parser, &ast_decl_var->set_value, &ast_decl_var->var_info->type, 0, 0));
-
+	
 	MATCH_TOK(TOK_SEMICOLON);
 	READ_TOK;
 	return 1;
@@ -761,7 +761,7 @@ static int parse_if_else(ast_parser_t* ast_parser, ast_cond_t* conditional, int 
 
 static int parse_statment(ast_parser_t* ast_parser, ast_statement_t* statement, ast_code_block_t* code_block, int in_loop) {
 	PANIC_ON_FAIL(debug_table_add_loc(ast_parser->ast->dbg_table, ast_parser->multi_scanner, &statement->src_loc_id), ast_parser, ERROR_MEMORY);
-
+	
 	switch (LAST_TOK.type)
 	{
 	case TOK_DECLTYPE:
@@ -1115,7 +1115,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 		while (value->data.array_literal.element_count != LAST_TOK.length) {
 			scanner_scan_char(&str_scanner);
 			buffer[value->data.array_literal.element_count++] = str_scanner.last_char;
-		}
+		} 
 		value->value_type = AST_VALUE_ARRAY_LITERAL;
 		value->type.type = TYPE_SUPER_ARRAY;
 
@@ -1127,7 +1127,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			for (uint_fast16_t i = 0; i < value->data.array_literal.element_count; i++) {
 				ESCAPE_ON_FAIL(value->data.array_literal.elements[i].data.primitive = ast_add_prim_value(ast_parser, (ast_primitive_t) {
 					.data.character = buffer[i],
-						.type = AST_PRIMITIVE_CHAR
+					.type = AST_PRIMITIVE_CHAR
 				}));
 				value->data.array_literal.elements[i].value_type = AST_VALUE_PRIMITIVE;
 				value->data.array_literal.elements[i].type.type = TYPE_PRIMITIVE_CHAR;
@@ -1334,7 +1334,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 		ESCAPE_ON_FAIL(parse_type(ast_parser, &value->data.type_op->match_type, 0, 0));
 		if (typecheck_has_type(value->data.type_op->match_type, TYPE_TYPEARG))
 			PANIC_ON_FAIL(CURRENT_FRAME.return_type, ast_parser, ERROR_UNEXPECTED_TYPE);
-		PANIC_ON_FAIL(value->data.type_op->match_type.type == TYPE_SUPER_RECORD || value->data.type_op->match_type.type == TYPE_TYPEARG, ast_parser, ERROR_UNEXPECTED_TYPE);
+		PANIC_ON_FAIL(IS_REF_TYPE(value->data.type_op->match_type) || value->data.type_op->match_type.type == TYPE_TYPEARG, ast_parser, ERROR_UNEXPECTED_TYPE);
 
 		TYPE_COPY(&value->type, value->data.type_op->match_type);
 
@@ -1394,7 +1394,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			READ_TOK;
 
 			ast_value_t cast_val = *value;
-			PANIC_ON_FAIL(cast_val.type.type == TYPE_SUPER_RECORD || cast_val.type.type == TYPE_TYPEARG, ast_parser, ERROR_UNEXPECTED_TYPE);
+			PANIC_ON_FAIL(IS_REF_TYPE(cast_val.type) || cast_val.type.type == TYPE_TYPEARG, ast_parser, ERROR_UNEXPECTED_TYPE);
 
 			value->value_type = AST_VALUE_TYPE_OP;
 			PANIC_ON_FAIL(value->data.type_op = safe_malloc(ast_parser->safe_gc, sizeof(ast_type_op_t)), ast_parser, ERROR_MEMORY);
@@ -1618,14 +1618,14 @@ int init_ast(ast_t* ast, ast_parser_t* ast_parser, dbg_table_t* dbg_table) {
 
 	PANIC_ON_FAIL(ast->record_protos = safe_malloc(ast_parser->safe_gc, (ast->allocated_records = 4) * sizeof(ast_record_proto_t*)), ast_parser, ERROR_MEMORY);
 	PANIC_ON_FAIL(ast->primitives = safe_malloc(ast_parser->safe_gc, (ast->allocated_constants = 10) * sizeof(ast_primitive_t*)), ast_parser, ERROR_MEMORY);
-
+	
 	READ_TOK;
 	uint32_t first_src_id;
 	PANIC_ON_FAIL(debug_table_add_loc(dbg_table, ast_parser->multi_scanner, &first_src_id), ast_parser, ERROR_MEMORY);
 	PANIC_ON_FAIL(!first_src_id, ast_parser, ERROR_INTERNAL);
 	dbg_table->src_locations[0].min_ip = 0;
 	dbg_table->src_locations[0].max_ip = UINT64_MAX - 1;
-	
+
 	ESCAPE_ON_FAIL(ast_parser_new_frame(ast_parser, NULL, 0));
 	ESCAPE_ON_FAIL(parse_code_block(ast_parser, &ast->exec_block, 0, 0));
 	ast_parser->top_level_local_count = CURRENT_FRAME.max_scoped_locals;

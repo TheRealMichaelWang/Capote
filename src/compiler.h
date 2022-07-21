@@ -132,7 +132,7 @@ typedef struct compiler {
 	compiler_reg_t* var_regs;
 
 	uint16_t* proc_call_offsets;
-	compiler_reg_t** proc_generic_regs;
+	//compiler_reg_t** proc_generic_regs;
 
 	ast_t* ast;
 	machine_t* target_machine;
@@ -149,4 +149,6 @@ int init_ins_builder(ins_builder_t* ins_builder, safe_gc_t* safe_gc);
 int ins_builder_append_ins(ins_builder_t* ins_builder, compiler_ins_t ins);
 
 int compile(compiler_t* compiler, safe_gc_t* safe_gc, machine_t* target_machine, ast_t* ast);
+
+void compiler_ins_to_machine_ins(compiler_ins_t* compiler_ins, machine_ins_t* machine_ins, uint64_t ins_count);
 #endif // !COMPILER_H

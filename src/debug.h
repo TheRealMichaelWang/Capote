@@ -22,9 +22,11 @@ typedef struct debug_table {
 } dbg_table_t;
 
 //printing utilities
+void print_instructions(machine_ins_t* ins, uint16_t ins_count);
 const char* get_err_msg(error_t error);
 
 void print_error_trace(multi_scanner_t multi_scanner);
+int print_back_trace(machine_t* machine, dbg_table_t* dbg_table, machine_ins_t* ins_begin);
 
 //debug table related definitions
 int init_debug_table(dbg_table_t* dbg_table, safe_gc_t* safe_gc);
