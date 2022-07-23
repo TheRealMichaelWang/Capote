@@ -77,8 +77,9 @@ static int emit_type_sig(FILE* file_out, const char* parent_sig, machine_type_si
 
 static int emit_type_info(FILE* file_out, ast_t* ast, machine_t* machine) {
 	fputs("\n//Type Signature Declarations\n\tmachine_type_sig_t* sig;\n", file_out);
+	fprintf(file_out, "#define SIG_COUNT_MAX (%"PRIu16" + (FRAME_LIMIT / 4))\n\t defined_sig_count = %"PRIu16"; ESCAPE_ON_FAIL(defined_signatures = malloc(SIG_COUNT_MAX * sizeof(machine_type_sig_t)));", machine->defined_sig_count, machine->defined_sig_count);
 	for (uint_fast16_t i = 0; i < machine->defined_sig_count; i++) {
-		fputs("\tESCAPE_ON_FAIL(sig = new_type_sig());\n\t", file_out);
+		fprintf(file_out, "\tsig = &defined_signatures[%"PRIdFAST16"];\n\t", i);
 		ESCAPE_ON_FAIL(emit_type_sig(file_out, "sig->", machine->defined_signatures[i]));
 	}
 	fputs("\n\t//Type relationships\n", file_out);
@@ -160,19 +161,21 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 			fputc(';', file_out);
 			break;
 		case COMPILER_OP_CODE_SET:
-			emit_reg(file_out, instructions[i].regs[0], 0);
 			if (instructions[i].regs[2].reg) { //atomotize signature
-				fprintf(file_out, ".long_int = defined_sig_count; scratch_ptr=new_type_sig(); PANIC_ON_FAIL((machine_type_sig_t*)scratch_ptr, CISH_ERROR_MEMORY, %"PRIu64"); "
+				fprintf(file_out, "PANIC_ON_FAIL(defined_sig_count != SIG_COUNT_MAX, CISH_ERROR_STACK_OVERFLOW, %"PRIu64");", src_loc_id);
+				emit_reg(file_out, instructions[i].regs[0], 0);
+				fprintf(file_out, ".long_int = defined_sig_count; scratch_ptr=&defined_signatures[defined_sig_count++]; PANIC_ON_FAIL((machine_type_sig_t*)scratch_ptr, CISH_ERROR_MEMORY, %"PRIu64"); "
 					"PANIC_ON_FAIL(atomize_heap_type_sig(defined_signatures[%"PRIu16"], scratch_ptr, 1), CISH_ERROR_MEMORY, %"PRIu64");", src_loc_id, instructions[i].regs[1].reg, src_loc_id);
 			}
 			else {//do not atomotize signature
+				emit_reg(file_out, instructions[i].regs[0], 0);
 				fprintf(file_out, ".long_int = %"PRIu16";", instructions[i].regs[1].reg);
 			}
 			break;
 		case COMPILER_OP_CODE_POP_ATOM_TYPESIGS:
 			fprintf(file_out, "if(%"PRIu16" > defined_sig_count) { PANIC(CISH_ERROR_STACK_OVERFLOW, %"PRIu64"); }; \n", instructions[i].regs[0].reg, src_loc_id);
 			for (uint16_t i = 0; i < instructions[i].regs[0].reg; i++) {
-				fprintf(file_out, "\tfree_defined_signature(&defined_signatures[defined_sig_count - %"PRIu16"]);\n", i + 1);
+				fprintf(file_out, "\tfree_type_signature(&defined_signatures[defined_sig_count - %"PRIu16"]);\n", i + 1);
 			}
 			fprintf(file_out, "\tdefined_sig_count -= %"PRIu16";", instructions[i].regs[0].reg);
 			break;
