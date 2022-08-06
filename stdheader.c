@@ -214,7 +214,7 @@ static ffi_t ffi_table;
 static uint16_t* type_table;
 
 static machine_type_sig_t* defined_signatures;
-static uint16_t defined_sig_count, alloced_sig_defs;
+static uint16_t defined_sig_count;
 
 static heap_alloc_t** reset_stack;
 static uint16_t reset_count;
@@ -319,7 +319,7 @@ static int init_runtime(int type_table_size) {
 	ESCAPE_ON_FAIL(trace_frame_bounds = malloc(FRAME_LIMIT * sizeof(uint16_t)));
 	ESCAPE_ON_FAIL(freed_heap_allocs = malloc((alloc_freed_heaps = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(type_table = calloc(type_table_size, sizeof(uint16_t)));
-	ESCAPE_ON_FAIL(defined_signatures = malloc((alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
+	//ESCAPE_ON_FAIL(defined_signatures = malloc((alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
 	ESCAPE_ON_FAIL(reset_stack = malloc((alloced_reset = 128) * sizeof(heap_alloc_t*)));
 	ESCAPE_ON_FAIL(install_stdlib());
 	return 1;
@@ -399,14 +399,14 @@ static void free_runtime() {
 
 }
 
-static machine_type_sig_t* new_type_sig() {
-	if (defined_sig_count == alloced_sig_defs) {
-		machine_type_sig_t* new_sigs = realloc(defined_signatures, (alloced_sig_defs += 10) * sizeof(machine_type_sig_t));
-		ESCAPE_ON_FAIL(new_sigs);
-		defined_signatures = new_sigs;
-	}
-	return &defined_signatures[defined_sig_count++];
-}
+//static machine_type_sig_t* new_type_sig() {
+//	if (defined_sig_count == alloced_sig_defs) {
+//		machine_type_sig_t* new_sigs = realloc(defined_signatures, (alloced_sig_defs += 10) * sizeof(machine_type_sig_t));
+//		ESCAPE_ON_FAIL(new_sigs);
+//		defined_signatures = new_sigs;
+//	}
+//	return &defined_signatures[defined_sig_count++];
+//}
 
 //makes a copy of a type signature, given a prototype defined signature which may contain context dependent type parameters that may escape
 static int atomize_heap_type_sig(machine_type_sig_t prototype, machine_type_sig_t* output, int atom_typeargs) {
@@ -719,7 +719,7 @@ static int std_tan(machine_reg_t* in, machine_reg_t* out) {
 }
 
 static int std_time(machine_reg_t* in, machine_reg_t* out) {
-	out->long_int = time(NULL);
+	out->long_int = clock();
 	return 1;
 }
 
