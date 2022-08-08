@@ -183,7 +183,8 @@ static const char* error_names[] = {
 	"robot error"
 };
 
-static machine_reg_t stack[UINT16_MAX / 8]; //stack memory
+#define STACK_LIMIT (UINT16_MAX / 8)
+static machine_reg_t stack[STACK_LIMIT]; //stack memory
 static void* positions[FRAME_LIMIT]; //call stack
 
 static heap_alloc_t** heap_allocs; //heap allocations/objects

@@ -20,6 +20,7 @@ int init_label_buf(label_buf_t* label_buf, safe_gc_t* safe_gc, compiler_ins_t* c
 		case COMPILER_OP_CODE_STORE_ALLOC:
 		case COMPILER_OP_CODE_STORE_ALLOC_I_BOUND:
 		case COMPILER_OP_CODE_FREE:
+		case COMPILER_OP_CODE_STACK_VALIDATE:
 		case COMPILER_OP_CODE_GC_NEW_FRAME:
 		case COMPILER_OP_CODE_LONG_DIVIDE:
 		case COMPILER_OP_CODE_CONFIG_TYPESIG:

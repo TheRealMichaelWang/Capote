@@ -213,6 +213,9 @@ int emit_instructions(FILE* file_out, label_buf_t* label_buf, compiler_ins_t* in
 		case COMPILER_OP_CODE_RETURN:
 			fputs("goto *(positions[--position_count]);", file_out);
 			break;
+		case COMPILER_OP_CODE_STACK_VALIDATE:
+			fprintf(file_out, "PANIC_ON_FAIL((global_offset + %"PRIu16") < STACK_LIMIT, CISH_ERROR_STACK_OVERFLOW, %"PRIu64");", instructions[i].regs[0].reg, src_loc_id);
+			break;
 		case COMPILER_OP_CODE_LABEL:
 			emit_reg(file_out, instructions[i].regs[0], 0);
 			fprintf(file_out, ".ip = &&label%"PRIu16";", label_buf->ins_label[instructions[i].regs[1].reg]);
