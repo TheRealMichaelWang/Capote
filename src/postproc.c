@@ -61,6 +61,9 @@ static void mark_value_no_affect_state(ast_value_t* value) {
 	value->affects_state = 0;
 	switch (value->value_type)
 	{
+	case AST_VALUE_PRIMITIVE:
+		value->data.primitive->is_used = 0;
+		break;
 	case AST_VALUE_ALLOC_RECORD:
 		for (uint_fast16_t i = 0; i < value->data.alloc_record.init_value_count; i++)
 			mark_value_no_affect_state(&value->data.alloc_record.init_values[i].value);
@@ -143,8 +146,12 @@ static void mark_code_block_no_affects_state(ast_code_block_t* code_block) {
 static int ast_postproc_value_affects_state(int affects_state, ast_value_t* value, int second_pass) {
 	int changes_made = 0;
 	value->affects_state = affects_state;
+
 	switch (value->value_type)
 	{
+	case AST_VALUE_PRIMITIVE:
+		value->data.primitive->is_used = value->affects_state;
+		break;
 	case AST_VALUE_ALLOC_ARRAY:
 		CHECK_AFFECTS_STATE(affects_state, &value->data.alloc_array->size);
 		break;
@@ -174,7 +181,7 @@ static int ast_postproc_value_affects_state(int affects_state, ast_value_t* valu
 			changes_made = 1;
 		}
 		CHECK_AFFECTS_STATE(value->data.set_var->var_info->is_used, &value->data.set_var->set_value);
-		value->affects_state = value->data.set_var->var_info->is_used || value->affects_state;
+		value->affects_state = value->affects_state || value->data.set_var->var_info->is_used;
 		break;
 	case AST_VALUE_SET_INDEX:
 		if (second_pass)
@@ -242,13 +249,6 @@ static int ast_postproc_codeblock_affects_state(ast_code_block_t* code_block, in
 		case AST_STATEMENT_DECL_VAR:
 			CHECK_AFFECTS_STATE(ast_postproc_value_affects_state(current_statement->data.var_decl.var_info->is_used, &current_statement->data.var_decl.set_value, second_pass));
 			break;
-		case AST_STATEMENT_RECORD_PROTO: {
-			if (!second_pass) {
-				for (uint_fast16_t i = 0; i < current_statement->data.record_proto->default_value_count; i++)
-					CHECK_AFFECTS_STATE(ast_postproc_value_affects_state(1, &current_statement->data.record_proto->default_values[i].value, 0));
-			}
-			break;
-		}
 		case AST_STATEMENT_COND: {
 			ast_cond_t* current_cond = current_statement->data.conditional;
 			while (current_cond) {
@@ -788,6 +788,42 @@ int ast_postproc_link_record(ast_parser_t* ast_parser, ast_record_proto_t* recor
 	return 1;
 }
 
+static int prim_value_comp(ast_primitive_t a, ast_primitive_t b) {
+	//if (a.type != b.type)
+	//	return 0;
+	switch (a.type)
+	{
+	case AST_PRIMITIVE_BOOL:
+		return a.data.bool_flag == b.data.bool_flag;
+	case AST_PRIMITIVE_CHAR:
+		return a.data.character == b.data.character;
+	case AST_PRIMITIVE_LONG:
+		return a.data.long_int == b.data.long_int;
+	case AST_PRIMITIVE_FLOAT:
+		return a.data.float_int == b.data.float_int;
+	}
+}
+
+void ast_sort_primitives(ast_parser_t* ast_parser) {
+	uint16_t current_constant = 0;
+	for (int i = 0; i < ast_parser->ast->constant_count; i++) {
+		if (!ast_parser->ast->primitives[i]->is_used)
+			continue;
+
+		for (int j = 0; j < i; j++) {
+			if (ast_parser->ast->primitives[j]->is_used && prim_value_comp(*ast_parser->ast->primitives[i], *ast_parser->ast->primitives[j])) {
+				ast_parser->ast->primitives[i]->data_id = ast_parser->ast->primitives[j]->data_id;
+				ast_parser->ast->primitives[i]->data.long_int = ast_parser->ast->primitives[j]->data.long_int;
+				goto found_common_prim;
+			}
+		}
+		ast_parser->ast->primitives[i]->data_id = current_constant++;
+	found_common_prim:
+		continue;
+	}
+	ast_parser->ast->unique_constants = current_constant;
+}
+
 int ast_postproc(ast_parser_t* ast_parser) {
 	//link record/struct definitions
 	for (uint_fast8_t i = 0; i < ast_parser->ast->record_count; i++)
@@ -809,6 +845,7 @@ int ast_postproc(ast_parser_t* ast_parser) {
 	ESCAPE_ON_FAIL(ast_postproc_code_block(ast_parser, &ast_parser->ast->exec_block, NULL, NULL, top_level_locals, ast_parser->top_level_local_count, NULL, shared_top_level, 1, NULL));
 
 	while (ast_postproc_codeblock_affects_state(&ast_parser->ast->exec_block, 1)) {}
+	ast_sort_primitives(ast_parser);
 
 	safe_free(ast_parser->safe_gc, shared_top_level);
 	safe_free(ast_parser->safe_gc, top_level_locals);

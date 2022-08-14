@@ -1,5 +1,5 @@
-include "stdlib/io.sf";
-include "stdlib/std.sf";
+include "stdlib/io.csh";
+include "stdlib/std.csh";
 
 proc fib(int n) {
 	if(n <= 1)
@@ -7,4 +7,4 @@ proc fib(int n) {
 	return thisproc(n - 1) + thisproc(n - 2);
 }
 
-println(itos(fib(35));
+println(itos(fib(35)));

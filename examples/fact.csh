@@ -1,5 +1,5 @@
-include "stdlib/io.csh";
-include "stdlib/std.csh";
+$include "stdlib/io.csh";
+$include "stdlib/std.csh";
 
 proc fact(int n) {
 	if(n == 0)
@@ -7,4 +7,4 @@ proc fact(int n) {
 	return n * thisproc(n - 1);
 }
 
-println(itos(fact(100)));
+fact(100);

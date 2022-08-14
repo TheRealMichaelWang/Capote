@@ -4,7 +4,7 @@
 
 int init_machine(machine_t* machine, uint16_t stack_size, uint16_t frame_limit, uint16_t type_count) {
 	machine->defined_sig_count = 0;
-	ESCAPE_ON_FAIL(machine->stack = malloc(stack_size * sizeof(machine_reg_t)));
+	ESCAPE_ON_FAIL(machine->stack = malloc((machine->stack_size = stack_size) * sizeof(machine_reg_t)));
 	ESCAPE_ON_FAIL(machine->defined_signatures = malloc((machine->alloced_sig_defs = 16) * sizeof(machine_type_sig_t)));
 	ESCAPE_ON_FAIL(machine->type_table = calloc(type_count, sizeof(uint16_t)));
 	return 1;

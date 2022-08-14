@@ -484,26 +484,36 @@ static int parse_type_params(ast_parser_t* ast_parser, typecheck_type_t* req_typ
 	return 1;
 }
 
-static int prim_value_comp(ast_primitive_t a, ast_primitive_t b) {
-	if (a.type != b.type)
-		return 0;
-	switch (a.type)
-	{
-	case AST_PRIMITIVE_BOOL:
-		return a.data.bool_flag == b.data.bool_flag;
-	case AST_PRIMITIVE_CHAR:
-		return a.data.character == b.data.character;
-	case AST_PRIMITIVE_LONG:
-		return a.data.long_int == b.data.long_int;
-	case AST_PRIMITIVE_FLOAT:
-		return a.data.float_int == b.data.float_int;
-	}
-}
+//static int prim_value_comp(ast_primitive_t a, ast_primitive_t b) {
+//	//if (a.type != b.type)
+//	//	return 0;
+//	switch (a.type)
+//	{
+//	case AST_PRIMITIVE_BOOL:
+//		return a.data.bool_flag == b.data.bool_flag;
+//	case AST_PRIMITIVE_CHAR:
+//		return a.data.character == b.data.character;
+//	case AST_PRIMITIVE_LONG:
+//		return a.data.long_int == b.data.long_int;
+//	case AST_PRIMITIVE_FLOAT:
+//		return a.data.float_int == b.data.float_int;
+//	}
+//}
 
 static ast_primitive_t* ast_add_prim_value(ast_parser_t* ast_parser, ast_primitive_t primitive) {
-	for (uint_fast16_t i = 0; i < ast_parser->ast->constant_count; i++)
-		if (prim_value_comp(*ast_parser->ast->primitives[i], primitive))
-			return ast_parser->ast->primitives[i];
+	uint16_t selected_id = UINT16_MAX;
+	uint64_t full_data;
+	//for (uint_fast16_t i = 0; i < ast_parser->ast->current_constant; i++)
+	//	if (prim_value_comp(primitive, *ast_parser->ast->primitives[i])) {
+	//		if(primitive.type == ast_parser->ast->primitives[i]->type)
+	//			return ast_parser->ast->primitives[i];
+	//		else {
+	//			selected_id = ast_parser->ast->primitives[i]->id;
+	//			full_data = ast_parser->ast->primitives[selected_id]->data.long_int;
+	//			break;
+	//		}
+	//	}
+
 	if (ast_parser->ast->constant_count == ast_parser->ast->allocated_constants) {
 		ast_primitive_t** new_primitives = safe_realloc(ast_parser->safe_gc, ast_parser->ast->primitives, (ast_parser->ast->allocated_constants += 5) * sizeof(ast_primitive_t*));
 		PANIC_ON_FAIL(new_primitives, ast_parser, ERROR_MEMORY);
@@ -512,7 +522,14 @@ static ast_primitive_t* ast_add_prim_value(ast_parser_t* ast_parser, ast_primiti
 	ast_primitive_t* prim_buf = safe_malloc(ast_parser->safe_gc, sizeof(ast_primitive_t));
 	PANIC_ON_FAIL(prim_buf, ast_parser, ERROR_MEMORY);
 	*prim_buf = primitive;
-	prim_buf->id = ast_parser->ast->constant_count;
+	/*
+	if (selected_id == UINT16_MAX)
+		prim_buf->id = ast_parser->ast->current_constant++;
+	else {
+		prim_buf->id = selected_id;
+		prim_buf->data.long_int = full_data;
+	}*/
+
 	ast_parser->ast->primitives[ast_parser->ast->constant_count++] = prim_buf;
 	return prim_buf;
 }
@@ -1127,7 +1144,7 @@ static int parse_value(ast_parser_t* ast_parser, ast_value_t* value, typecheck_t
 			for (uint_fast16_t i = 0; i < value->data.array_literal.element_count; i++) {
 				ESCAPE_ON_FAIL(value->data.array_literal.elements[i].data.primitive = ast_add_prim_value(ast_parser, (ast_primitive_t) {
 					.data.character = buffer[i],
-						.type = AST_PRIMITIVE_CHAR
+					.type = AST_PRIMITIVE_CHAR
 				}));
 				value->data.array_literal.elements[i].value_type = AST_VALUE_PRIMITIVE;
 				value->data.array_literal.elements[i].type.type = TYPE_PRIMITIVE_CHAR;
@@ -1613,7 +1630,6 @@ int init_ast(ast_t* ast, ast_parser_t* ast_parser, dbg_table_t* dbg_table) {
 	ast->constant_count = 0;
 	ast->var_decl_count = 0;
 	ast->proc_count = 0;
-	ast->constant_count = 0;
 	ast->record_count = 0;
 
 	PANIC_ON_FAIL(ast->record_protos = safe_malloc(ast_parser->safe_gc, (ast->allocated_records = 4) * sizeof(ast_record_proto_t*)), ast_parser, ERROR_MEMORY);

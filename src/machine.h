@@ -34,7 +34,7 @@ typedef struct machine {
 	uint16_t* type_table;
 
 	machine_type_sig_t* defined_signatures;
-	uint16_t defined_sig_count, alloced_sig_defs;
+	uint16_t defined_sig_count, alloced_sig_defs, stack_size;
 } machine_t;
 
 int init_machine(machine_t* machine, uint16_t stack_size, uint16_t frame_limit, uint16_t type_count);

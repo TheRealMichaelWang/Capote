@@ -53,7 +53,7 @@ int emit_debug_info(FILE* file_out, dbg_table_t* dbg_table, label_buf_t* label_b
 
 void emit_constants(FILE* file_out, ast_t* ast, machine_t* machine) {
 	fputs("//initializes all hardcode constants\nstatic void init_constants() {", file_out);
-	for (uint16_t i = 0; i < ast->constant_count; i++)
+	for (uint16_t i = 0; i < ast->unique_constants; i++)
 		fprintf(file_out, "\n\tstack[%"PRIu16"].long_int = %"PRIi64";", i, machine->stack[i].long_int);
 	fputs("\n}\n", file_out);
 }

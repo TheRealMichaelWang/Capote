@@ -39,8 +39,8 @@ static uint16_t allocate_value_regs(compiler_t* compiler, ast_value_t value, uin
 	switch (value.value_type)
 	{
 	case AST_VALUE_PRIMITIVE:
-		memcpy(&compiler->target_machine->stack[value.data.primitive->id], &value.data.primitive->data, sizeof(uint64_t));
-		compiler->eval_regs[value.id] = GLOB_REG(value.data.primitive->id);
+		compiler->target_machine->stack[value.data.primitive->data_id].long_int = value.data.primitive->data.long_int;
+		compiler->eval_regs[value.id] = GLOB_REG(value.data.primitive->data_id);
 		compiler->move_eval[value.id] = 1;
 		return current_reg;
 	case AST_VALUE_ALLOC_ARRAY:
@@ -56,7 +56,7 @@ static uint16_t allocate_value_regs(compiler_t* compiler, ast_value_t value, uin
 		break;
 	}
 	case AST_VALUE_PROC: {
-		compiler->var_regs[value.data.procedure->thisproc->id] = compiler->eval_regs[value.id] = GLOB_REG(compiler->ast->constant_count + compiler->current_global++);
+		compiler->var_regs[value.data.procedure->thisproc->id] = compiler->eval_regs[value.id] = GLOB_REG(compiler->ast->unique_constants + compiler->current_global++);
 		compiler->move_eval[value.id] = 1;
 
 		uint16_t current_arg_reg = 1;
@@ -186,7 +186,7 @@ static void allocate_code_block_regs(compiler_t* compiler, ast_code_block_t code
 			else {
 				if (var_decl.var_info->is_global) {
 					if (var_decl.var_info->is_used) {
-						compiler->var_regs[var_decl.var_info->id] = GLOB_REG(compiler->ast->constant_count + compiler->current_global++);
+						compiler->var_regs[var_decl.var_info->id] = GLOB_REG(compiler->ast->unique_constants + compiler->current_global++);
 						allocate_value_regs(compiler, var_decl.set_value, current_reg, &compiler->var_regs[var_decl.var_info->id], proc);
 					}
 					else if (var_decl.set_value.affects_state)
@@ -705,7 +705,7 @@ int compile(compiler_t* compiler, safe_gc_t* safe_gc, machine_t* target_machine,
 
 	PANIC_ON_FAIL(init_ins_builder(&compiler->ins_builder, safe_gc), compiler, ERROR_MEMORY);
 
-	EMIT_INS(INS1(COMPILER_OP_CODE_STACK_OFFSET, GLOB_REG(compiler->ast->constant_count + compiler->current_global)));
+	EMIT_INS(INS1(COMPILER_OP_CODE_STACK_OFFSET, GLOB_REG(compiler->ast->unique_constants + compiler->current_global)));
 	EMIT_INS(INS0(COMPILER_OP_CODE_GC_NEW_FRAME));
 	ESCAPE_ON_FAIL(compile_code_block(compiler, ast->exec_block, NULL, 0, NULL, 0));
 	EMIT_INS(INS0(COMPILER_OP_CODE_GC_CLEAN));

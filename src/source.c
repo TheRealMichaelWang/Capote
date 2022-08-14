@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "labels.h"
 #include "emit.h"
+#include "emit_asm.h"
 
 #define ABORT(MSG) {printf MSG ; putchar('\n'); exit(EXIT_FAILURE);}
 
@@ -93,35 +94,56 @@ int main(int argc, const char** argv) {
 		ABORT(("Failed to initialze label buffer."));
 	}
 
-	if (!emit_c_header(output_file, robo_mode, debug)) {
-		free_machine(&machine);
-		free_safe_gc(&safe_gc, 1);
-		ABORT(("Could not find stdheader.c. Please ensure it is in the compilers working directory."))
-	}
-	emit_constants(output_file, &ast, &machine);
-	
-	if (debug) {
-		puts("Emiting debug symbols...");
-		if (!emit_debug_info(output_file, &dbg_table, &label_buf)) {
+	if (HAS_EXT_FLAG("-asm")) {
+		if (robo_mode || debug) {
 			free_machine(&machine);
 			free_safe_gc(&safe_gc, 1);
-			ABORT(("Could not emit debugging symbols."));
+			ABORT(("RoboMode/Vex and Debugging(traceback) isn't supported with emit assembly mode."));
+		}
+		emit_asm_constants(output_file, &ast, &machine);
+
+		if (!emit_asm_init(output_file, &ast, &machine)) {
+			free_machine(&machine);
+			free_safe_gc(&safe_gc, 1);
+			ABORT(("Could not emit initialization routines (GAS assembly)."));
+		}
+
+		if (!emit_asm_instructions(output_file, &label_buf, &machine, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count)) {
+			free_machine(&machine);
+			free_safe_gc(&safe_gc, 1);
+			ABORT(("Failed to emit instructions. Potentially unrecognized opcode, or unimplemented headerless feature (GAS assembly)."));
 		}
 	}
+	else {
+		if (!emit_c_header(output_file, robo_mode, debug)) {
+			free_machine(&machine);
+			free_safe_gc(&safe_gc, 1);
+			ABORT(("Could not find stdheader.c. Please ensure it is in the compilers working directory."))
+		}
+		emit_constants(output_file, &ast, &machine);
 
-	if (!emit_init(output_file, &ast, &machine, debug)) {
-		free_machine(&machine);
-		free_safe_gc(&safe_gc, 1);
-		ABORT(("Could not emit initialization routines."));
+		if (debug) {
+			puts("Emiting debug symbols...");
+			if (!emit_debug_info(output_file, &dbg_table, &label_buf)) {
+				free_machine(&machine);
+				free_safe_gc(&safe_gc, 1);
+				ABORT(("Could not emit debugging symbols."));
+			}
+		}
+
+		if (!emit_init(output_file, &ast, &machine, debug)) {
+			free_machine(&machine);
+			free_safe_gc(&safe_gc, 1);
+			ABORT(("Could not emit initialization routines."));
+		}
+
+		if (!emit_instructions(output_file, &label_buf, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count, debug, &dbg_table)) {
+			free_machine(&machine);
+			free_safe_gc(&safe_gc, 1);
+			ABORT(("Failed to emit instructions. Potentially unrecognized opcode."));
+		}
+		emit_final(output_file, robo_mode, debug, source);
 	}
-
-	if (!emit_instructions(output_file, &label_buf, compiler.ins_builder.instructions, compiler.ins_builder.instruction_count, debug, &dbg_table)) {
-		free_machine(&machine);
-		free_safe_gc(&safe_gc, 1);
-		ABORT(("Failed to emit instructions. Potentially unrecognized opcode."));
-	}
-	emit_final(output_file, robo_mode, debug, source);
-
 	free_machine(&machine);
 	free_safe_gc(&safe_gc, 1);
 	fclose(output_file);

@@ -70,7 +70,8 @@ typedef struct ast_primitive {
 		double float_int;
 	} data;
 
-	uint16_t id;
+	uint16_t data_id;
+	int is_used;
 } ast_primitive_t;
 
 typedef struct ast_value {
@@ -306,7 +307,7 @@ typedef struct ast {
 	uint8_t record_count, allocated_records;
 
 	ast_primitive_t** primitives;
-	uint16_t constant_count, allocated_constants, proc_count;
+	uint16_t constant_count, unique_constants, allocated_constants, proc_count;
 
 	dbg_table_t* dbg_table;
 
