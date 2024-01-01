@@ -1,5 +1,5 @@
 # Capote
-A portable SuperForth compiler designed with performance and interoperability in mind.
+A portable Cish compiler designed with performance and interoperability in mind.
 
 ## TO INSTALL
 - Download [the latest release](https://github.com/TheRealMichaelWang/Capote/releases/download/1.0/capote.exe)
